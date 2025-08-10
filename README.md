@@ -1,8 +1,8 @@
-### HACS Gallery Card (custom repo)
+# HACS Gallery Card (custom repo)
 <img width="702" height="528" alt="image" src="https://github.com/Ixitxachitl/gallery-card/blob/main/images/preview.png?raw=true" />
 
-# 1) HACS → 3-dot menu → *Custom repositories* → URL of this repo → Type: Frontend → **Add**.&#x20;
-# 2) Search **Gallery Card** in HACS → Install.
+## 1) HACS → 3-dot menu → *Custom repositories* → URL of this repo → Type: Frontend → **Add**.&#x20;
+## 2) Search **Gallery Card** in HACS → Install.
 
 ## Example
 ```yaml
