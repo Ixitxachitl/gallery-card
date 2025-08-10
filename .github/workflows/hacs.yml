@@ -10,4 +10,4 @@ jobs:
       - name: HACS validation
         uses: hacs/action@main
         with:
-          category: frontend
+          category: plugin
