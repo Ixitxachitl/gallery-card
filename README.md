@@ -1,4 +1,5 @@
 ### HACS (custom repo)
+<img width="702" height="528" alt="image" src="https://github.com/user-attachments/assets/ec66d39a-14b0-44ff-8072-f738e6f4fdec" />
 
 # 1) HACS → 3-dot menu → *Custom repositories* → URL of this repo → Type: Frontend → **Add**.&#x20;
 # 2) Search **Gallery Card** in HACS → Install.
