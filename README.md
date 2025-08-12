@@ -62,6 +62,8 @@ thumb_gap: 1
 preview_max_height: 480
 captions: true
 badges: true
+show_images: true
+show_videos: true
 ```
 
 > **Tip:** The date picker selects a day; the card builds the folder path using `folder_pattern`. So a selected date of **2025‑08‑07** with `MM‑DD‑YY` maps to folder `08‑07‑25` under your `media_dir`.
@@ -82,7 +84,8 @@ badges: true
 | `preview_max_height` | number    | `480`                 | Max height (px) of the preview media (keeps aspect ratio).                                                                                                                                        |
 | `captions`           | boolean   | `true`                | Show captions (thumb overlay + preview overlay).                                                                                                                                                  |
 | `badges`             | boolean   | `true`                | Show 🖼 / ▶ badges on thumbnails and preview.                                                                                                                                                     |
-
+| `show_images`	       | boolean	 | `true`	               | Show image files in the gallery.                                                                                                                                                                  |
+| `show_videos`        | boolean	 | `true`	               | Show video files in the gallery.                                                                                                                                                                  |
 ---
 
 ## Media directory setup
