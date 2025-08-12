@@ -318,10 +318,17 @@ class GalleryCard extends HTMLElement {
       })
     );
 
+    // Toggle filters (default both true)
+    const showImages = this.config.show_images !== false;
+    const showVideos = this.config.show_videos !== false;
+    
+    // Apply toggles
+    const filtered = resolved.filter(it => it.isVideo ? showVideos : showImages);
+    
     // Newest first by extracted key (e.g., HH:mm:ss)
-    resolved.sort((a, b) => b._sortKey.localeCompare(a._sortKey));
-
-    this.items = resolved;
+    filtered.sort((a, b) => b._sortKey.localeCompare(a._sortKey));
+    
+    this.items = filtered;
     this.currentIndex = this.items.length ? 0 : -1;
     this._renderThumbs(this.items);
     this._renderPreview(this.items[this.currentIndex] || null);
@@ -476,6 +483,8 @@ class GalleryCardEditor extends HTMLElement {
       preview_max_height: 420,
       captions: true,
       badges: true,
+      show_images: true,
+      show_videos: true,
     };
   }
 
@@ -545,6 +554,16 @@ class GalleryCardEditor extends HTMLElement {
         <label>Show type badges (🖼 / ▶)</label>
         <input id="badges" type="checkbox" ${c.badges ? 'checked' : ''}>
       </div>
+
+      <div class="row">
+        <label>Show pictures (images)</label>
+        <input id="show_images" type="checkbox" ${c.show_images ? 'checked' : ''}>
+      </div>
+      
+      <div class="row">
+        <label>Show videos</label>
+        <input id="show_videos" type="checkbox" ${c.show_videos ? 'checked' : ''}>
+      </div>
     `;
 
     this._bind('#media_dir', v => this._update('media_dir', v));
@@ -557,6 +576,8 @@ class GalleryCardEditor extends HTMLElement {
     this._bindNumber('#preview_max_height', v => this._update('preview_max_height', v));
     this._bindBool('#captions', v => this._update('captions', v));
     this._bindBool('#badges', v => this._update('badges', v));
+    this._bindBool('#show_images', v => this._update('show_images', v));
+    this._bindBool('#show_videos', v => this._update('show_videos', v));
   }
 
   _bind(sel, cb) { this.querySelector(sel)?.addEventListener('input', (e) => cb(e.target.value)); }
