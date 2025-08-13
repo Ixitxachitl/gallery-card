@@ -25,7 +25,7 @@ class GalleryCard extends HTMLElement {
       show_images: true,
       show_videos: true,
       horizontal_layout: false,   // thumbs left, preview right when true
-      sidebar_width: 120,         // px, width of the left thumb column (horizontal layout)
+      sidebar_width: 146,         // px, width of the left thumb column (horizontal layout)
       layout_gap: 8,              // px, gap between thumbs column and preview
     };
   }
@@ -555,7 +555,7 @@ class GalleryCardEditor extends HTMLElement {
       show_images: true,
       show_videos: true,
       horizontal_layout: false,   // thumbs left, preview right when true
-      sidebar_width: 120,         // px, width of the left thumb column (horizontal layout)
+      sidebar_width: 146,         // px, width of the left thumb column (horizontal layout)
       layout_gap: 8,              // px, gap between thumbs column and preview
     };
   }
