@@ -21,7 +21,12 @@ class GalleryCard extends HTMLElement {
       thumb_gap: 1,
       preview_max_height: 480,
       captions: true,
-      badges: true
+      badges: true,
+      show_images: true,
+      show_videos: true,
+      horizontal_layout: false,   // thumbs left, preview right when true
+      sidebar_width: 120,         // px, width of the left thumb column (horizontal layout)
+      layout_gap: 8,              // px, gap between thumbs column and preview
     };
   }
 
@@ -128,6 +133,41 @@ class GalleryCard extends HTMLElement {
         :host([data-caps-off]) .preview-cap { display:none; }
         :host([data-badges-off]) .badge,
         :host([data-badges-off]) .preview-badge { display:none; }
+
+        /* Content wrapper controls vertical vs horizontal layout */
+        .content { display: block; }
+        
+        /* Horizontal: thumbs as a vertical sidebar, preview on the right */
+        :host([data-horizontal]) .content {
+          display: flex;
+          gap: var(--gc-layout-gap, 8px);
+          align-items: stretch;
+        }
+        
+        /* Default thumbs row (vertical layout): horizontal strip */
+        .thumb-row {
+          display: flex;
+          overflow-x: auto;
+          gap: var(--gc-thumb-gap, 1px);
+          padding: 2px 0;
+        }
+        
+        /* Horizontal mode: make thumbs a vertical list/column */
+        :host([data-horizontal]) .thumb-row {
+          flex-direction: column;
+          width: var(--gc-sidebar-w, 120px);
+          flex: 0 0 var(--gc-sidebar-w, 120px);
+          overflow-y: auto;
+          overflow-x: hidden;
+          max-height: var(--gc-preview-max-h, 420px); /* keep list height aligned with preview */
+          padding: 0;                                   /* tighter */
+        }
+        
+        /* Give the preview the remaining space in horizontal mode */
+        :host([data-horizontal]) .preview-container {
+          flex: 1 1 auto;
+          min-width: 0; /* allow flexbox to shrink properly */
+        }
       </style>
 
       <ha-card class="card">
@@ -136,12 +176,14 @@ class GalleryCard extends HTMLElement {
           <button class="refresh-btn" title="Refresh" aria-label="Refresh">↻</button>
         </div>
 
-        <div class="thumb-row"></div>
-
-        <div class="preview-container">
-          <button class="nav-btn nav-prev" title="Previous">&laquo; Prev</button>
-          <div class="preview-slot"></div>
-          <button class="nav-btn nav-next" title="Next">Next &raquo;</button>
+        <div class="content">
+          <div class="thumb-row"></div>
+        
+          <div class="preview-container">
+            <button class="nav-btn nav-prev" title="Previous">&laquo; Prev</button>
+            <div class="preview-slot"></div>
+            <button class="nav-btn nav-next" title="Next">Next &raquo;</button>
+          </div>
         </div>
 
         <div class="modal" aria-hidden="true">
@@ -182,6 +224,18 @@ class GalleryCard extends HTMLElement {
       this.showItem(idx);
     });
 
+    this.thumbRow.addEventListener('keydown', (e) => {
+      const fig = e.target.closest('.thumb');
+      if (!fig) return;
+      if (e.key === 'Enter' || e.key === ' ') {
+        e.preventDefault();
+        const idx = Number(fig.dataset.index);
+        if (Number.isInteger(idx)) {
+          this.showItem(idx);
+        }
+      }
+    });
+    
     // Modal close
     this.modal.addEventListener('click', (e) => {
       if (e.target === this.modal) this.closeModal(); // backdrop
@@ -215,6 +269,9 @@ class GalleryCard extends HTMLElement {
     this.style.setProperty('--gc-preview-max-h', px(c.preview_max_height, 420));
     this.toggleAttribute('data-caps-off', c.captions === false);
     this.toggleAttribute('data-badges-off', c.badges === false);
+    this.style.setProperty('--gc-sidebar-w', `${Number(this.config.sidebar_width ?? 120)}px`);
+    this.style.setProperty('--gc-layout-gap', `${Number(this.config.layout_gap ?? 8)}px`);
+    this.toggleAttribute('data-horizontal', !!this.config.horizontal_layout);
   }
 
   set hass(hass) {
@@ -344,6 +401,11 @@ class GalleryCard extends HTMLElement {
       fig.dataset.index = String(index);
       fig.title = item._original || item.title;
 
+      // a11y
+      fig.tabIndex = 0;
+      fig.setAttribute('role', 'button');
+      fig.setAttribute('aria-label', `${item.isVideo ? 'Video' : 'Image'}: ${item.title}`);
+      
       if (item.isVideo) {
         const v = document.createElement('video');
         v.src = item.url + '#t=0.1';
@@ -414,9 +476,16 @@ class GalleryCard extends HTMLElement {
   _scrollThumbIntoView(index) {
     const el = this.thumbRow?.querySelector(`.thumb[data-index="${index}"]`);
     if (!el) return;
-    requestAnimationFrame(() => {
-      el.scrollIntoView({ behavior: 'smooth', block: 'nearest', inline: 'center' });
-    });
+  
+    const horizontal = this.hasAttribute('data-horizontal');
+  
+    // In horizontal layout, the thumb list scrolls VERTICALLY.
+    // In vertical (default) layout, it scrolls HORIZONTALLY.
+    const opts = horizontal
+      ? { behavior: 'smooth', block: 'center', inline: 'nearest' }
+      : { behavior: 'smooth', block: 'nearest', inline: 'center' };
+  
+    requestAnimationFrame(() => el.scrollIntoView(opts));
   }
 
   showItem(index) {
@@ -485,6 +554,9 @@ class GalleryCardEditor extends HTMLElement {
       badges: true,
       show_images: true,
       show_videos: true,
+      horizontal_layout: false,   // thumbs left, preview right when true
+      sidebar_width: 120,         // px, width of the left thumb column (horizontal layout)
+      layout_gap: 8,              // px, gap between thumbs column and preview
     };
   }
 
@@ -564,6 +636,21 @@ class GalleryCardEditor extends HTMLElement {
         <label>Show videos</label>
         <input id="show_videos" type="checkbox" ${c.show_videos ? 'checked' : ''}>
       </div>
+
+      <div class="row">
+        <label>Horizontal layout (thumbs left)</label>
+        <input id="horizontal_layout" type="checkbox" ${c.horizontal_layout ? 'checked' : ''}>
+      </div>
+      
+      <div class="row">
+        <label>Sidebar width (px)</label>
+        <input id="sidebar_width" type="number" min="80" max="400" step="1" value="${Number(c.sidebar_width)}">
+      </div>
+      
+      <div class="row">
+        <label>Layout gap (px)</label>
+        <input id="layout_gap" type="number" min="0" max="32" step="1" value="${Number(c.layout_gap)}">
+      </div>
     `;
 
     this._bind('#media_dir', v => this._update('media_dir', v));
@@ -578,6 +665,9 @@ class GalleryCardEditor extends HTMLElement {
     this._bindBool('#badges', v => this._update('badges', v));
     this._bindBool('#show_images', v => this._update('show_images', v));
     this._bindBool('#show_videos', v => this._update('show_videos', v));
+    this._bindBool('#horizontal_layout', v => this._update('horizontal_layout', v));
+    this._bindNumber('#sidebar_width', v => this._update('sidebar_width', v));
+    this._bindNumber('#layout_gap', v => this._update('layout_gap', v));
   }
 
   _bind(sel, cb) { this.querySelector(sel)?.addEventListener('input', (e) => cb(e.target.value)); }
