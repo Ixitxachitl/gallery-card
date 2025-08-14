@@ -3,7 +3,7 @@
 A modern, Home Assistant–styled gallery card with a **thumbnail strip + large preview**, **image & video support**, **modal pop‑out**, **date picker**, and an optional **horizontal layout** where thumbnails are stacked vertically on the left with the preview on the right. Captions and sorting are fully configurable via **regex on the full filename including extension**.
 
 <img width="702" height="528" alt="image" src="https://github.com/Ixitxachitl/gallery-card/blob/main/images/preview.png?raw=true" />
-
+<img width="702" height="528" alt="image" src="https://github.com/Ixitxachitl/gallery-card/blob/main/images/preview2.png?raw=true" />
 ---
 
 ## Features
