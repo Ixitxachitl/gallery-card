@@ -268,7 +268,7 @@ class GalleryCard extends HTMLElement {
     this.style.setProperty('--gc-preview-max-h', px(c.preview_max_height, 420));
     this.toggleAttribute('data-caps-off', c.captions === false);
     this.toggleAttribute('data-badges-off', c.badges === false);
-    this.style.setProperty('--gc-sidebar-w', `${Number(this.config.sidebar_width ?? 120)}px`);
+    this.style.setProperty('--gc-sidebar-w', `${Number(this.config.sidebar_width ?? 146)}px`);
     this.style.setProperty('--gc-layout-gap', `${Number(this.config.layout_gap ?? 8)}px`);
     this.toggleAttribute('data-horizontal', !!this.config.horizontal_layout);
   }
@@ -555,7 +555,7 @@ class GalleryCardEditor extends HTMLElement {
       show_images: true,
       show_videos: true,
       horizontal_layout: false,
-      sidebar_width: 120,
+      sidebar_width: 146,
       layout_gap: 8,
     };
   }
