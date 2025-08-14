@@ -538,7 +538,15 @@ customElements.define('gallery-card', GalleryCard);
 
 /* ===== Visual Editor (no Lit dependency) ===== */
 class GalleryCardEditor extends HTMLElement {
-  setConfig(config) { this._config = { ...config }; this._render(); }
+  setConfig(config) {
+    this._config = { ...(this._config || {}), ...(config || {}) };
+    if (!this._rendered) {
+      this._render();
+      this._rendered = true;
+    } else {
+      this._syncInputsFromConfig();
+    }
+  }
   set hass(hass) { this._hass = hass; }
   get _default() {
     return {
@@ -670,13 +678,38 @@ class GalleryCardEditor extends HTMLElement {
     this._bindNumber('#layout_gap', v => this._update('layout_gap', v));
   }
 
-  _bind(sel, cb) { this.querySelector(sel)?.addEventListener('input', (e) => cb(e.target.value)); }
+  _bind(sel, cb) { this.querySelector(sel)?.addEventListener('change', (e) => cb(e.target.value)); }
   _bindNumber(sel, cb) { this.querySelector(sel)?.addEventListener('change', (e) => cb(Number(e.target.value))); }
   _bindBool(sel, cb) { this.querySelector(sel)?.addEventListener('change', (e) => cb(e.target.checked)); }
 
   _update(key, value) {
     this._config = { ...(this._config || {}), [key]: value };
     this.dispatchEvent(new CustomEvent('config-changed', { detail: { config: this._config } }));
+  }
+
+  _syncInputsFromConfig() {
+    const c = { ...this._default, ...(this._config || {}) };
+    this.querySelector('#media_dir')?.setAttribute('value', c.media_dir);
+    const setVal = (sel, v) => { const el = this.querySelector(sel); if (el) el.value = String(v ?? ''); };
+    const setNum = (sel, v) => { const el = this.querySelector(sel); if (el) el.value = Number(v ?? 0); };
+    const setBool = (sel, v) => { const el = this.querySelector(sel); if (el) el.checked = !!v; };
+  
+    setVal('#folder_pattern', c.folder_pattern);
+    setVal('#file_pattern', c.file_pattern);
+    setVal('#file_time_regex', c.file_time_regex);
+    setVal('#file_title_regex', c.file_title_regex);
+  
+    setNum('#thumb_height', c.thumb_height);
+    setNum('#thumb_gap', c.thumb_gap);
+    setNum('#preview_max_height', c.preview_max_height);
+    setNum('#sidebar_width', c.sidebar_width);
+    setNum('#layout_gap', c.layout_gap);
+  
+    setBool('#captions', c.captions);
+    setBool('#badges', c.badges);
+    setBool('#show_images', c.show_images);
+    setBool('#show_videos', c.show_videos);
+    setBool('#horizontal_layout', c.horizontal_layout);
   }
 }
 customElements.define('gallery-card-editor', GalleryCardEditor);
