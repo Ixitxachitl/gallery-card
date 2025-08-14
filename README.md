@@ -1,4 +1,4 @@
-# HACS Gallery Card
+# Gallery Card
 
 A modern, Home Assistant–styled gallery card with a **thumbnail strip + large preview**, **image & video support**, **modal pop‑out**, **date picker**, and an optional **horizontal layout** where thumbnails are stacked vertically on the left with the preview on the right. Captions and sorting are fully configurable via **regex on the full filename including extension**.
 
