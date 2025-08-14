@@ -4,6 +4,7 @@ A modern, Home Assistant–styled gallery card with a **thumbnail strip + large 
 
 <img width="702" height="528" alt="image" src="https://github.com/Ixitxachitl/gallery-card/blob/main/images/preview.png?raw=true" />
 <img width="702" height="528" alt="image" src="https://github.com/Ixitxachitl/gallery-card/blob/main/images/preview2.png?raw=true" />
+
 ---
 
 ## Features
