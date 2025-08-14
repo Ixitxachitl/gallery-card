@@ -56,7 +56,7 @@ class GalleryCard extends HTMLElement {
         .thumb-row { display:flex; overflow-x:auto; gap:var(--gc-thumb-gap, 1px); padding:2px 0; }
         .thumb { position:relative; margin:0; padding:0; line-height:0; }
         .thumb img, .thumb video {
-          height: var(--gc-thumb-h, 46px);
+          height: var(--gc-thumb-h, 72px);
           width: auto; display:block;
           cursor:pointer; border:1px solid transparent; border-radius:3px;
           object-fit: contain; /* preserve aspect */
@@ -263,7 +263,7 @@ class GalleryCard extends HTMLElement {
   _applyVars() {
     const c = this.config || {};
     const px = (v, def) => (Number.isFinite(v) ? `${v}px` : `${def}px`);
-    this.style.setProperty('--gc-thumb-h', px(c.thumb_height, 46));
+    this.style.setProperty('--gc-thumb-h', px(c.thumb_height, 72));
     this.style.setProperty('--gc-thumb-gap', px(c.thumb_gap, 1));
     this.style.setProperty('--gc-preview-max-h', px(c.preview_max_height, 420));
     this.toggleAttribute('data-caps-off', c.captions === false);
@@ -547,7 +547,7 @@ class GalleryCardEditor extends HTMLElement {
       folder_pattern: 'MM-DD-YY',
       file_pattern: '^(.+)$',
       file_time_regex: '(\\d{2}:\\d{2}:\\d{2})',
-      thumb_height: 46,
+      thumb_height: 72,
       thumb_gap: 1,
       preview_max_height: 420,
       captions: true,
