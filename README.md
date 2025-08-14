@@ -86,7 +86,7 @@ layout_gap: 8
 | `file_pattern`       | regex str | `^(.+)$`              | **Caption regex** applied to the **full filename including extension**. Uses capture group 1.                                   |
 | `file_time_regex`    | regex str | `(\d{2}:\d{2}:\d{2})` | **Sorting regex** on the **full filename**. The first capture group becomes the descending sort key.                            |
 | `file_title_regex`   | regex str | `^(.+)$`              | **Fallback caption** applied to the **basename (no extension)** if `file_pattern` doesn’t match. Uses capture group 1.          |
-| `thumb_height`       | number    | `46`                  | Thumbnail height in pixels. *(Editor may seed 72; omitted value falls back to 46 in-card.)*                                     |
+| `thumb_height`       | number    | `72`                  | Thumbnail height in pixels.                                     |
 | `thumb_gap`          | number    | `1`                   | Gap (px) between thumbnails.                                                                                                    |
 | `preview_max_height` | number    | `420`                 | Max height (px) of the preview media. *(Editor may seed 480; omitted value falls back to 420 in-card.)*                         |
 | `captions`           | boolean   | `true`                | Show captions (thumb + preview overlays).                                                                                       |
