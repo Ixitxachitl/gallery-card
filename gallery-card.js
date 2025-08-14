@@ -16,7 +16,6 @@ class GalleryCard extends HTMLElement {
       folder_pattern: 'MM-DD-YY',
       file_pattern: '^(.+)$',              // caption regex (FULL filename incl. extension)
       file_time_regex: '(\\d{2}:\\d{2}:\\d{2})', // sort key regex (FULL filename)
-      file_title_regex: '^(.+)$',          // fallback caption regex (basename only)
       thumb_height: 72,
       thumb_gap: 1,
       preview_max_height: 480,
@@ -337,7 +336,6 @@ class GalleryCard extends HTMLElement {
 
     const fileCaptionRe   = this._compileRe(this.config.file_pattern || '^(.+)$');
     const timeRe          = this._compileRe(this.config.file_time_regex || '(\\d{2}:\\d{2}:\\d{2})');
-    const titleFallbackRe = this._compileRe(this.config.file_title_regex || '^(.+)$');
 
     const resolved = await Promise.all(
       mediaItems.map(async (item) => {
@@ -349,17 +347,10 @@ class GalleryCard extends HTMLElement {
         const isVideo = (item.media_content_type || '').startsWith('video/');
         const fullName = (item.title && String(item.title)) ||
                          (item.media_content_id.split('/').pop() || '');
-        const baseName = fullName.replace(/\.[^.]+$/, '');
 
-        // Caption from FULL filename via file_pattern (group 1)
-        let caption = fullName;
+        // Caption from FULL filename via file_pattern (group 1), else use full name as-is
         const capMatch = fullName.match(fileCaptionRe);
-        if (capMatch && capMatch[1]) caption = capMatch[1];
-        else {
-          // fallback: old behavior on basename
-          const m = baseName.match(titleFallbackRe);
-          if (m && m[1]) caption = m[1];
-        }
+        const caption = (capMatch && capMatch[1]) ? capMatch[1] : fullName;
 
         // Sort key from FULL filename via time regex (group 1)
         const sortMatch = fullName.match(timeRe);
@@ -536,25 +527,26 @@ class GalleryCard extends HTMLElement {
 
 customElements.define('gallery-card', GalleryCard);
 
-/* ===== Visual Editor (no Lit dependency) ===== */
+/* ===== Visual Editor (HA-native ha-form) ===== */
 class GalleryCardEditor extends HTMLElement {
   setConfig(config) {
+    // merge so HA can call setConfig repeatedly without blowing away form
     this._config = { ...(this._config || {}), ...(config || {}) };
-    if (!this._rendered) {
-      this._render();
-      this._rendered = true;
-    } else {
-      this._syncInputsFromConfig();
-    }
+    this._ensureRendered();
+    this._updateFormData();
   }
-  set hass(hass) { this._hass = hass; }
+
+  set hass(hass) {
+    this._hass = hass;
+    if (this._form) this._form.hass = hass;
+  }
+
   get _default() {
     return {
       media_dir: '',
       folder_pattern: 'MM-DD-YY',
       file_pattern: '^(.+)$',
       file_time_regex: '(\\d{2}:\\d{2}:\\d{2})',
-      file_title_regex: '^(.+)$',
       thumb_height: 46,
       thumb_gap: 1,
       preview_max_height: 420,
@@ -562,154 +554,98 @@ class GalleryCardEditor extends HTMLElement {
       badges: true,
       show_images: true,
       show_videos: true,
-      horizontal_layout: false,   // thumbs left, preview right when true
-      sidebar_width: 146,         // px, width of the left thumb column (horizontal layout)
-      layout_gap: 8,              // px, gap between thumbs column and preview
+      horizontal_layout: false,
+      sidebar_width: 120,
+      layout_gap: 8,
     };
   }
 
-  _render() {
-    const c = { ...this._default, ...(this._config || {}) };
-    this.innerHTML = `
-      <style>
-        .row { display:flex; gap:12px; align-items:center; margin:8px 0; }
-        .row > label { width: 260px; color: var(--primary-text-color); }
-        input[type="text"], input[type="number"] {
-          width: 260px; padding: 6px; border-radius: 6px; border: 1px solid var(--divider-color);
-          background: var(--card-background-color);
-          color: var(--primary-text-color);
-        }
-        input[type="checkbox"] { transform: scale(1.2); }
-        .help { font-size: 12px; color: var(--secondary-text-color); margin-left: 260px; margin-top: -6px; }
-      </style>
+  get _schema() {
+    /** @type import('home-assistant-js-websocket').PropertySchema[] */
+    return [
+      { name: 'media_dir', selector: { text: {} } },
+      {
+        name: 'folder_pattern',
+        selector: { text: {} },
+        // helper text shows under the field
+        help: 'Tokens: YYYY, YY, MM, DD (e.g., YYYY/MM/DD, MM-DD-YY)',
+      },
+      { name: 'file_pattern', selector: { text: {} }, help: 'Caption regex on FULL filename incl. extension; uses capture group 1.' },
+      { name: 'file_time_regex', selector: { text: {} }, help: 'Sorting regex on FULL filename; capture group 1 is the descending sort key.' },
 
-      <div class="row">
-        <label>Media directory</label>
-        <input id="media_dir" type="text" placeholder="media_source/snapshots" value="${c.media_dir}">
-      </div>
+      { name: 'thumb_height', selector: { number: { min: 24, max: 160, mode: 'box' } } },
+      { name: 'thumb_gap', selector: { number: { min: 0, max: 16, mode: 'box' } } },
+      { name: 'preview_max_height', selector: { number: { min: 200, max: 1200, step: 10, mode: 'box' } } },
 
-      <div class="row">
-        <label>Folder pattern (date → folder)</label>
-        <input id="folder_pattern" type="text" placeholder="MM-DD-YY" value="${c.folder_pattern}">
-      </div>
-      <div class="help">Tokens: YYYY, YY, MM, DD (e.g., YYYY/MM/DD, MM-DD-YY)</div>
+      { name: 'captions', selector: { boolean: {} } },
+      { name: 'badges', selector: { boolean: {} } },
 
-      <div class="row">
-        <label>Caption regex (FULL filename incl. extension)</label>
-        <input id="file_pattern" type="text" placeholder="^(.+)$" value="${c.file_pattern}">
-      </div>
+      { name: 'show_images', selector: { boolean: {} } },
+      { name: 'show_videos', selector: { boolean: {} } },
 
-      <div class="row">
-        <label>Sort key regex (FULL filename)</label>
-        <input id="file_time_regex" type="text" placeholder="(\\d{2}:\\d{2}:\\d{2})" value="${c.file_time_regex}">
-      </div>
+      { name: 'horizontal_layout', selector: { boolean: {} }, help: 'Thumbs on the left, preview on the right.' },
+      { name: 'sidebar_width', selector: { number: { min: 80, max: 400, mode: 'box' } } },
+      { name: 'layout_gap', selector: { number: { min: 0, max: 32, mode: 'box' } } },
+    ];
+  }
 
-      <div class="row">
-        <label>Fallback caption regex (basename)</label>
-        <input id="file_title_regex" type="text" placeholder="^(.+)$" value="${c.file_title_regex}">
-      </div>
-      <div class="help">If caption regex fails, first capture from basename is used.</div>
+  _ensureRendered() {
+    if (this._rendered) return;
+    this._rendered = true;
 
-      <div class="row">
-        <label>Thumbnail height (px)</label>
-        <input id="thumb_height" type="number" min="24" max="160" step="1" value="${Number(c.thumb_height)}">
-      </div>
-
-      <div class="row">
-        <label>Thumbnail gap (px)</label>
-        <input id="thumb_gap" type="number" min="0" max="16" step="1" value="${Number(c.thumb_gap)}">
-      </div>
-
-      <div class="row">
-        <label>Preview max height (px)</label>
-        <input id="preview_max_height" type="number" min="200" max="1200" step="10" value="${Number(c.preview_max_height)}">
-      </div>
-
-      <div class="row">
-        <label>Show captions</label>
-        <input id="captions" type="checkbox" ${c.captions ? 'checked' : ''}>
-      </div>
-
-      <div class="row">
-        <label>Show type badges (🖼 / ▶)</label>
-        <input id="badges" type="checkbox" ${c.badges ? 'checked' : ''}>
-      </div>
-
-      <div class="row">
-        <label>Show pictures (images)</label>
-        <input id="show_images" type="checkbox" ${c.show_images ? 'checked' : ''}>
-      </div>
-      
-      <div class="row">
-        <label>Show videos</label>
-        <input id="show_videos" type="checkbox" ${c.show_videos ? 'checked' : ''}>
-      </div>
-
-      <div class="row">
-        <label>Horizontal layout (thumbs left)</label>
-        <input id="horizontal_layout" type="checkbox" ${c.horizontal_layout ? 'checked' : ''}>
-      </div>
-      
-      <div class="row">
-        <label>Sidebar width (px)</label>
-        <input id="sidebar_width" type="number" min="80" max="400" step="1" value="${Number(c.sidebar_width)}">
-      </div>
-      
-      <div class="row">
-        <label>Layout gap (px)</label>
-        <input id="layout_gap" type="number" min="0" max="32" step="1" value="${Number(c.layout_gap)}">
-      </div>
+    const style = document.createElement('style');
+    style.textContent = `
+      :host {
+        display: block;
+        padding: 8px 0;
+      }
+      ha-form {
+        --mdc-text-field-fill-color: var(--card-background-color);
+      }
     `;
 
-    this._bind('#media_dir', v => this._update('media_dir', v));
-    this._bind('#folder_pattern', v => this._update('folder_pattern', v));
-    this._bind('#file_pattern', v => this._update('file_pattern', v));
-    this._bind('#file_time_regex', v => this._update('file_time_regex', v));
-    this._bind('#file_title_regex', v => this._update('file_title_regex', v));
-    this._bindNumber('#thumb_height', v => this._update('thumb_height', v));
-    this._bindNumber('#thumb_gap', v => this._update('thumb_gap', v));
-    this._bindNumber('#preview_max_height', v => this._update('preview_max_height', v));
-    this._bindBool('#captions', v => this._update('captions', v));
-    this._bindBool('#badges', v => this._update('badges', v));
-    this._bindBool('#show_images', v => this._update('show_images', v));
-    this._bindBool('#show_videos', v => this._update('show_videos', v));
-    this._bindBool('#horizontal_layout', v => this._update('horizontal_layout', v));
-    this._bindNumber('#sidebar_width', v => this._update('sidebar_width', v));
-    this._bindNumber('#layout_gap', v => this._update('layout_gap', v));
+    const form = document.createElement('ha-form');
+    form.addEventListener('value-changed', (ev) => {
+      // HA ha-form emits the whole object as ev.detail.value
+      const newConfig = ev.detail.value || {};
+      this._config = { ...this._config, ...newConfig };
+      this.dispatchEvent(new CustomEvent('config-changed', { detail: { config: this._config } }));
+    });
+
+    // Provide label/help callbacks like HA’s built-in editors
+    form.computeLabel = (schema) => {
+      const map = {
+        media_dir: 'Media directory',
+        folder_pattern: 'Folder pattern (date → folder)',
+        file_pattern: 'Caption regex (full filename)',
+        file_time_regex: 'Sort key regex (full filename)',
+        thumb_height: 'Thumbnail height (px)',
+        thumb_gap: 'Thumbnail gap (px)',
+        preview_max_height: 'Preview max height (px)',
+        captions: 'Show captions',
+        badges: 'Show type badges (🖼 / ▶)',
+        show_images: 'Show pictures (images)',
+        show_videos: 'Show videos',
+        horizontal_layout: 'Horizontal layout (thumbs left)',
+        sidebar_width: 'Sidebar width (px)',
+        layout_gap: 'Layout gap (px)',
+      };
+      return map[schema.name] || schema.name;
+    };
+    form.computeHelper = (schema) => schema.help || undefined;
+
+    this._form = form;
+    this.append(style, form);
   }
 
-  _bind(sel, cb) { this.querySelector(sel)?.addEventListener('change', (e) => cb(e.target.value)); }
-  _bindNumber(sel, cb) { this.querySelector(sel)?.addEventListener('change', (e) => cb(Number(e.target.value))); }
-  _bindBool(sel, cb) { this.querySelector(sel)?.addEventListener('change', (e) => cb(e.target.checked)); }
+  _updateFormData() {
+    if (!this._form) return;
+    const data = { ...this._default, ...(this._config || {}) };
 
-  _update(key, value) {
-    this._config = { ...(this._config || {}), [key]: value };
-    this.dispatchEvent(new CustomEvent('config-changed', { detail: { config: this._config } }));
-  }
-
-  _syncInputsFromConfig() {
-    const c = { ...this._default, ...(this._config || {}) };
-    this.querySelector('#media_dir')?.setAttribute('value', c.media_dir);
-    const setVal = (sel, v) => { const el = this.querySelector(sel); if (el) el.value = String(v ?? ''); };
-    const setNum = (sel, v) => { const el = this.querySelector(sel); if (el) el.value = Number(v ?? 0); };
-    const setBool = (sel, v) => { const el = this.querySelector(sel); if (el) el.checked = !!v; };
-  
-    setVal('#folder_pattern', c.folder_pattern);
-    setVal('#file_pattern', c.file_pattern);
-    setVal('#file_time_regex', c.file_time_regex);
-    setVal('#file_title_regex', c.file_title_regex);
-  
-    setNum('#thumb_height', c.thumb_height);
-    setNum('#thumb_gap', c.thumb_gap);
-    setNum('#preview_max_height', c.preview_max_height);
-    setNum('#sidebar_width', c.sidebar_width);
-    setNum('#layout_gap', c.layout_gap);
-  
-    setBool('#captions', c.captions);
-    setBool('#badges', c.badges);
-    setBool('#show_images', c.show_images);
-    setBool('#show_videos', c.show_videos);
-    setBool('#horizontal_layout', c.horizontal_layout);
+    // Important: assign as properties, not attributes
+    this._form.hass = this._hass;
+    this._form.schema = this._schema;
+    this._form.data = data;
   }
 }
 customElements.define('gallery-card-editor', GalleryCardEditor);
