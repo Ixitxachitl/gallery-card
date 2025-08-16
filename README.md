@@ -87,7 +87,7 @@ layout_gap: 8
 | `file_time_regex`    | regex str | `(\d{2}:\d{2}:\d{2})` | **Sorting regex** on the **full filename**. The first capture group becomes the descending sort key.                            |
 | `thumb_height`       | number    | `72`                  | Thumbnail height in pixels.                                                                                                     |
 | `thumb_gap`          | number    | `1`                   | Gap (px) between thumbnails.                                                                                                    |
-| `preview_max_height` | number    | `420`                 | Max height (px) of the preview media. *(Editor may seed 480; omitted value falls back to 420 in-card.)*                         |
+| `preview_max_height` | number    | `480`                 | Max height (px) of the preview media.                         |
 | `captions`           | boolean   | `true`                | Show captions (thumb + preview overlays).                                                                                       |
 | `badges`             | boolean   | `true`                | Show 🖼 / ▶ badges on thumbnails and preview.                                                                                   |
 | `show_images`        | boolean   | `true`                | Include image files.                                                                                                            |
