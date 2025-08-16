@@ -265,7 +265,7 @@ class GalleryCard extends HTMLElement {
     const px = (v, def) => (Number.isFinite(v) ? `${v}px` : `${def}px`);
     this.style.setProperty('--gc-thumb-h', px(c.thumb_height, 72));
     this.style.setProperty('--gc-thumb-gap', px(c.thumb_gap, 1));
-    this.style.setProperty('--gc-preview-max-h', px(c.preview_max_height, 420));
+    this.style.setProperty('--gc-preview-max-h', px(c.preview_max_height, 480));
     this.toggleAttribute('data-caps-off', c.captions === false);
     this.toggleAttribute('data-badges-off', c.badges === false);
     this.style.setProperty('--gc-sidebar-w', `${Number(this.config.sidebar_width ?? 146)}px`);
@@ -549,7 +549,7 @@ class GalleryCardEditor extends HTMLElement {
       file_time_regex: '(\\d{2}:\\d{2}:\\d{2})',
       thumb_height: 72,
       thumb_gap: 1,
-      preview_max_height: 420,
+      preview_max_height: 480,
       captions: true,
       badges: true,
       show_images: true,
