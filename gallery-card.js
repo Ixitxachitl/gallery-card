@@ -31,8 +31,6 @@ class GalleryCard extends HTMLElement {
 
   constructor() {
     super();
-    // Make host programmatically focusable for modal keyboard handling
-    this.tabIndex = -1;
   }
 
   setConfig(config) {
@@ -52,6 +50,9 @@ class GalleryCard extends HTMLElement {
 
     // Apply visual toggles/vars on every config change
     this._applyVars();
+
+    // Now it's safe to add attributes (HA has already created the element)
+    if (!this.hasAttribute('tabindex')) this.setAttribute('tabindex', '-1');
 
     // If we already loaded once and the folder rules changed, reload current date
     if (this.loaded && this.datePicker?.value) {
@@ -565,7 +566,9 @@ class GalleryCard extends HTMLElement {
   getCardSize() { return 4; }
 }
 
-customElements.define('gallery-card', GalleryCard);
+if (!customElements.get('gallery-card')) {
+  customElements.define('gallery-card', GalleryCard);
+}
 
 /* ===== Visual Editor (HA-native ha-form) ===== */
 class GalleryCardEditor extends HTMLElement {
@@ -688,4 +691,6 @@ class GalleryCardEditor extends HTMLElement {
     this._form.data = data;
   }
 }
-customElements.define('gallery-card-editor', GalleryCardEditor);
+if (!customElements.get('gallery-card-editor')) {
+  customElements.define('gallery-card-editor', GalleryCardEditor);
+}
