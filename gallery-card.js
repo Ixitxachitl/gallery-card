@@ -35,8 +35,16 @@ class GalleryCard extends HTMLElement {
     this.contentRoot = this._toContentId(config.media_dir);
     this._applyVars();
 
-    this.attachShadow({ mode: 'open' });
-    this.shadowRoot.innerHTML = `
+    // initialize shadow DOM and UI only once
+    if (!this._initialized) {
+      this._initialized = true;
+
+      if (!this.shadowRoot) this.attachShadow({ mode: 'open' });
+
+      // make host focusable so shadowRoot keydown works when modal is open
+      this.tabIndex = 0;
+
+      this.shadowRoot.innerHTML = `
       <style>
         :host { display:block; }
         .card {
@@ -195,62 +203,92 @@ class GalleryCard extends HTMLElement {
       </ha-card>
     `;
 
-    // refs
-    this.datePicker = this.shadowRoot.querySelector('.date-picker');
-    this.refreshBtn = this.shadowRoot.querySelector('.refresh-btn');
-    this.thumbRow = this.shadowRoot.querySelector('.thumb-row');
-    this.previewSlot = this.shadowRoot.querySelector('.preview-slot');
-    this.prevBtn = this.shadowRoot.querySelector('.nav-prev');
-    this.nextBtn = this.shadowRoot.querySelector('.nav-next');
+      // refs
+      this.datePicker = this.shadowRoot.querySelector('.date-picker');
+      this.refreshBtn = this.shadowRoot.querySelector('.refresh-btn');
+      this.thumbRow = this.shadowRoot.querySelector('.thumb-row');
+      this.previewSlot = this.shadowRoot.querySelector('.preview-slot');
+      this.prevBtn = this.shadowRoot.querySelector('.nav-prev');
+      this.nextBtn = this.shadowRoot.querySelector('.nav-next');
 
-    this.modal = this.shadowRoot.querySelector('.modal');
-    this.modalMedia = this.shadowRoot.querySelector('.modal-media');
-    this.modalCaption = this.shadowRoot.querySelector('.modal-caption');
-    this.modalClose = this.shadowRoot.querySelector('.modal-close');
+      this.modal = this.shadowRoot.querySelector('.modal');
+      this.modalMedia = this.shadowRoot.querySelector('.modal-media');
+      this.modalCaption = this.shadowRoot.querySelector('.modal-caption');
+      this.modalClose = this.shadowRoot.querySelector('.modal-close');
 
-    // events
-    this.prevBtn.addEventListener('click', () => this.changeItem(-1));
-    this.nextBtn.addEventListener('click', () => this.changeItem(1));
-    this.refreshBtn.addEventListener('click', () => this.loadForSelectedDate());
-    this.datePicker.addEventListener('change', () => this.loadForSelectedDate());
+      // make modal close behave like a button for a11y
+      this.modalClose.tabIndex = 0;
+      this.modalClose.setAttribute('role', 'button');
 
-    // Thumb click via delegation
-    this.thumbRow.addEventListener('click', (e) => {
-      const fig = e.target.closest('.thumb');
-      if (!fig) return;
-      const idx = Number(fig.dataset.index);
-      if (!Number.isInteger(idx)) return;
-      this.showItem(idx);
-    });
-
-    this.thumbRow.addEventListener('keydown', (e) => {
-      const fig = e.target.closest('.thumb');
-      if (!fig) return;
-      if (e.key === 'Enter' || e.key === ' ') {
-        e.preventDefault();
+      // bind handlers so we can remove them later
+      this._onPrev = () => this.changeItem(-1);
+      this._onNext = () => this.changeItem(1);
+      this._onRefresh = () => this.loadForSelectedDate();
+      this._onDateChange = () => this.loadForSelectedDate();
+      this._onThumbClick = (e) => {
+        const fig = e.target.closest('.thumb');
+        if (!fig) return;
         const idx = Number(fig.dataset.index);
-        if (Number.isInteger(idx)) {
-          this.showItem(idx);
+        if (!Number.isInteger(idx)) return;
+        this.showItem(idx);
+      };
+      this._onThumbKeydown = (e) => {
+        const fig = e.target.closest('.thumb');
+        if (!fig) return;
+        if (e.key === 'Enter' || e.key === ' ') {
+          e.preventDefault();
+          const idx = Number(fig.dataset.index);
+          if (Number.isInteger(idx)) {
+            this.showItem(idx);
+          }
         }
-      }
-    });
-    
-    // Modal close
-    this.modal.addEventListener('click', (e) => {
-      if (e.target === this.modal) this.closeModal(); // backdrop
-    });
-    this.modalClose.addEventListener('click', (e) => {
-      e.stopPropagation();
-      this.closeModal();
-    });
+      };
+      this._onModalBackdropClick = (e) => { if (e.target === this.modal) this.closeModal(); };
+      this._onModalCloseClick = (e) => { e.stopPropagation(); this.closeModal(); };
+      this._onKeydownShadow = (e) => {
+        if (!this.modal.classList.contains('open')) return;
+        if (e.key === 'Escape') this.closeModal();
+        if (e.key === 'ArrowLeft') this.changeItem(-1);
+        if (e.key === 'ArrowRight') this.changeItem(1);
+      };
 
-    // Keyboard in modal
-    this.shadowRoot.addEventListener('keydown', (e) => {
-      if (!this.modal.classList.contains('open')) return;
-      if (e.key === 'Escape') this.closeModal();
-      if (e.key === 'ArrowLeft') this.changeItem(-1);
-      if (e.key === 'ArrowRight') this.changeItem(1);
-    });
+      // events
+      this.prevBtn.addEventListener('click', this._onPrev);
+      this.nextBtn.addEventListener('click', this._onNext);
+      this.refreshBtn.addEventListener('click', this._onRefresh);
+      this.datePicker.addEventListener('change', this._onDateChange);
+
+      // Thumb click via delegation
+      this.thumbRow.addEventListener('click', this._onThumbClick);
+      this.thumbRow.addEventListener('keydown', this._onThumbKeydown);
+
+      // Modal close
+      this.modal.addEventListener('click', this._onModalBackdropClick);
+      this.modalClose.addEventListener('click', this._onModalCloseClick);
+
+      // Keyboard in modal (on shadowRoot) — host is focusable
+      this.shadowRoot.addEventListener('keydown', this._onKeydownShadow);
+    } else {
+      // If already initialized just apply updated vars
+      this._applyVars();
+    }
+  }
+
+  disconnectedCallback() {
+    // remove listeners to prevent leaks
+    try {
+      this.prevBtn?.removeEventListener('click', this._onPrev);
+      this.nextBtn?.removeEventListener('click', this._onNext);
+      this.refreshBtn?.removeEventListener('click', this._onRefresh);
+      this.datePicker?.removeEventListener('change', this._onDateChange);
+      this.thumbRow?.removeEventListener('click', this._onThumbClick);
+      this.thumbRow?.removeEventListener('keydown', this._onThumbKeydown);
+      this.modal?.removeEventListener('click', this._onModalBackdropClick);
+      this.modalClose?.removeEventListener('click', this._onModalCloseClick);
+      this.shadowRoot?.removeEventListener('keydown', this._onKeydownShadow);
+    } catch (e) {
+      // ignore
+    }
   }
 
   _toContentId(input) {
@@ -262,7 +300,10 @@ class GalleryCard extends HTMLElement {
 
   _applyVars() {
     const c = this.config || {};
-    const px = (v, def) => (Number.isFinite(v) ? `${v}px` : `${def}px`);
+    const px = (v, def) => {
+      const n = Number(v);
+      return Number.isFinite(n) ? `${n}px` : `${def}px`;
+    };
     this.style.setProperty('--gc-thumb-h', px(c.thumb_height, 72));
     this.style.setProperty('--gc-thumb-gap', px(c.thumb_gap, 1));
     this.style.setProperty('--gc-preview-max-h', px(c.preview_max_height, 480));
@@ -303,8 +344,14 @@ class GalleryCard extends HTMLElement {
   }
 
   _compileRe(str) {
-    try { return new RegExp(str); }
-    catch { return /^(.+)$/; }
+    try {
+      const s = String(str || '');
+      if (s.length > 500) return /^(.+)$/; // guard against absurd inputs
+      return new RegExp(s);
+    }
+    catch {
+      return /^(.+)$/;
+    }
   }
 
   async loadForSelectedDate() {
@@ -339,39 +386,48 @@ class GalleryCard extends HTMLElement {
 
     const resolved = await Promise.all(
       mediaItems.map(async (item) => {
-        const resolvedItem = await this.hassInstance.callWS({
-          type: "media_source/resolve_media",
-          media_content_id: item.media_content_id
-        });
+        try {
+          const resolvedItem = await this.hassInstance.callWS({
+            type: "media_source/resolve_media",
+            media_content_id: item.media_content_id
+          });
 
-        const isVideo = (item.media_content_type || '').startsWith('video/');
-        const fullName = (item.title && String(item.title)) ||
-                         (item.media_content_id.split('/').pop() || '');
+          if (!resolvedItem || !resolvedItem.url) return null; // skip items without url
 
-        // Caption from FULL filename via file_pattern (group 1), else use full name as-is
-        const capMatch = fullName.match(fileCaptionRe);
-        const caption = (capMatch && capMatch[1]) ? capMatch[1] : fullName;
+          const isVideo = (item.media_content_type || '').startsWith('video/');
+          const fullName = (item.title && String(item.title)) ||
+                           (item.media_content_id.split('/').pop() || '');
 
-        // Sort key from FULL filename via time regex (group 1)
-        const sortMatch = fullName.match(timeRe);
-        const sortKey = (sortMatch && sortMatch[1]) ? sortMatch[1] : '';
+          // Caption from FULL filename via file_pattern (group 1), else use full name as-is
+          const capMatch = fullName.match(fileCaptionRe);
+          const caption = (capMatch && capMatch[1]) ? capMatch[1] : fullName;
 
-        return {
-          url: resolvedItem.url,
-          title: caption,
-          isVideo,
-          _original: fullName,
-          _sortKey: sortKey
-        };
+          // Sort key from FULL filename via time regex (group 1)
+          const sortMatch = fullName.match(timeRe);
+          const sortKey = (sortMatch && sortMatch[1]) ? sortMatch[1] : '';
+
+          return {
+            url: resolvedItem.url,
+            title: caption,
+            isVideo,
+            _original: fullName,
+            _sortKey: sortKey
+          };
+        } catch (e) {
+          return null;
+        }
       })
     );
+
+    // Remove nulls (failed resolves)
+    const available = resolved.filter(Boolean);
 
     // Toggle filters (default both true)
     const showImages = this.config.show_images !== false;
     const showVideos = this.config.show_videos !== false;
     
     // Apply toggles
-    const filtered = resolved.filter(it => it.isVideo ? showVideos : showImages);
+    const filtered = available.filter(it => it.isVideo ? showVideos : showImages);
     
     // Newest first by extracted key (e.g., HH:mm:ss)
     filtered.sort((a, b) => b._sortKey.localeCompare(a._sortKey));
@@ -409,6 +465,8 @@ class GalleryCard extends HTMLElement {
       } else {
         const img = document.createElement('img');
         img.src = item.url;
+        img.loading = 'lazy';
+        img.decoding = 'async';
         fig.appendChild(img);
         const badge = document.createElement('span');
         badge.className = 'badge';
@@ -514,12 +572,18 @@ class GalleryCard extends HTMLElement {
     }
     this.modalCaption.textContent = item.title || '';
     this.modal.classList.add('open');
-    this.shadowRoot.host.focus?.();
+    this.modal.setAttribute('aria-hidden', 'false');
+    // focus the close control for keyboard users
+    this.modalClose?.focus();
   }
 
   closeModal() {
     this.modal.classList.remove('open');
+    this.modal.setAttribute('aria-hidden', 'true');
     this.modalMedia.innerHTML = '';
+    // restore focus to selected thumb or host
+    const sel = this.thumbRow.querySelector('.thumb.selected');
+    if (sel) sel.focus(); else this.focus();
   }
 
   getCardSize() { return 4; }
