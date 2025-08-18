@@ -29,13 +29,37 @@ class GalleryCard extends HTMLElement {
     };
   }
 
+  constructor() {
+    super();
+    // Make host programmatically focusable for modal keyboard handling
+    this.tabIndex = -1;
+  }
+
   setConfig(config) {
     if (!config.media_dir) throw new Error("Set media_dir (e.g. 'snapshots' or 'media_source/snapshots').");
-    this.config = config;
-    this.contentRoot = this._toContentId(config.media_dir);
+
+    // Merge to avoid blowing away values on repeated setConfig calls
+    this.config = { ...(this.config || {}), ...config };
+    this.contentRoot = this._toContentId(this.config.media_dir);
+
+    // First-time render
+    if (!this.shadowRoot) {
+      this.attachShadow({ mode: 'open' });
+      this._render();
+      this._cacheRefs();
+      this._bindEvents();
+    }
+
+    // Apply visual toggles/vars on every config change
     this._applyVars();
 
-    this.attachShadow({ mode: 'open' });
+    // If we already loaded once and the folder rules changed, reload current date
+    if (this.loaded && this.datePicker?.value) {
+      this.loadForSelectedDate();
+    }
+  }
+
+  _render() {
     this.shadowRoot.innerHTML = `
       <style>
         :host { display:block; }
@@ -143,14 +167,6 @@ class GalleryCard extends HTMLElement {
           align-items: stretch;
         }
         
-        /* Default thumbs row (vertical layout): horizontal strip */
-        .thumb-row {
-          display: flex;
-          overflow-x: auto;
-          gap: var(--gc-thumb-gap, 1px);
-          padding: 2px 0;
-        }
-        
         /* Horizontal mode: make thumbs a vertical list/column */
         :host([data-horizontal]) .thumb-row {
           flex-direction: column;
@@ -179,13 +195,13 @@ class GalleryCard extends HTMLElement {
           <div class="thumb-row"></div>
         
           <div class="preview-container">
-            <button class="nav-btn nav-prev" title="Previous">&laquo; Prev</button>
+            <button class="nav-btn nav-prev" title="Previous" aria-label="Previous">&laquo; Prev</button>
             <div class="preview-slot"></div>
-            <button class="nav-btn nav-next" title="Next">Next &raquo;</button>
+            <button class="nav-btn nav-next" title="Next" aria-label="Next">Next &raquo;</button>
           </div>
         </div>
 
-        <div class="modal" aria-hidden="true">
+        <div class="modal" role="dialog" aria-modal="true" aria-hidden="true">
           <div class="modal-content">
             <span class="modal-close" aria-label="Close">&times;</span>
             <div class="modal-media"></div>
@@ -194,8 +210,9 @@ class GalleryCard extends HTMLElement {
         </div>
       </ha-card>
     `;
+  }
 
-    // refs
+  _cacheRefs() {
     this.datePicker = this.shadowRoot.querySelector('.date-picker');
     this.refreshBtn = this.shadowRoot.querySelector('.refresh-btn');
     this.thumbRow = this.shadowRoot.querySelector('.thumb-row');
@@ -207,8 +224,12 @@ class GalleryCard extends HTMLElement {
     this.modalMedia = this.shadowRoot.querySelector('.modal-media');
     this.modalCaption = this.shadowRoot.querySelector('.modal-caption');
     this.modalClose = this.shadowRoot.querySelector('.modal-close');
+  }
 
-    // events
+  _bindEvents() {
+    if (this._eventsBound) return;
+    this._eventsBound = true;
+
     this.prevBtn.addEventListener('click', () => this.changeItem(-1));
     this.nextBtn.addEventListener('click', () => this.changeItem(1));
     this.refreshBtn.addEventListener('click', () => this.loadForSelectedDate());
@@ -226,12 +247,10 @@ class GalleryCard extends HTMLElement {
     this.thumbRow.addEventListener('keydown', (e) => {
       const fig = e.target.closest('.thumb');
       if (!fig) return;
-      if (e.key === 'Enter' || e.key === ' ') {
+      if (e.key === 'Enter' || e.key === ' ' || e.code === 'Space') {
         e.preventDefault();
         const idx = Number(fig.dataset.index);
-        if (Number.isInteger(idx)) {
-          this.showItem(idx);
-        }
+        if (Number.isInteger(idx)) this.showItem(idx);
       }
     });
     
@@ -254,7 +273,8 @@ class GalleryCard extends HTMLElement {
   }
 
   _toContentId(input) {
-    let id = input.trim().replace(/\/+$/, '');
+    let id = String(input || '').trim().replace(/\/+$/, '');
+    if (!id) return '';
     if (id.startsWith('media-source://')) return id;
     if (id.startsWith('media_source/')) return `media-source://${id}`;
     return `media-source://media_source/${id}`;
@@ -262,22 +282,25 @@ class GalleryCard extends HTMLElement {
 
   _applyVars() {
     const c = this.config || {};
-    const px = (v, def) => (Number.isFinite(v) ? `${v}px` : `${def}px`);
+    const px = (v, def) => {
+      const n = Number(v);
+      return Number.isFinite(n) ? `${n}px` : `${def}px`;
+    };
     this.style.setProperty('--gc-thumb-h', px(c.thumb_height, 72));
     this.style.setProperty('--gc-thumb-gap', px(c.thumb_gap, 1));
     this.style.setProperty('--gc-preview-max-h', px(c.preview_max_height, 480));
     this.toggleAttribute('data-caps-off', c.captions === false);
     this.toggleAttribute('data-badges-off', c.badges === false);
-    this.style.setProperty('--gc-sidebar-w', `${Number(this.config.sidebar_width ?? 146)}px`);
-    this.style.setProperty('--gc-layout-gap', `${Number(this.config.layout_gap ?? 8)}px`);
-    this.toggleAttribute('data-horizontal', !!this.config.horizontal_layout);
+    this.style.setProperty('--gc-sidebar-w', px(c.sidebar_width ?? 146, 146));
+    this.style.setProperty('--gc-layout-gap', px(c.layout_gap ?? 8, 8));
+    this.toggleAttribute('data-horizontal', !!c.horizontal_layout);
   }
 
   set hass(hass) {
     if (!this.loaded) {
       this.loaded = true;
       this.hassInstance = hass;
-      this.datePicker.value = this._formatDateInput(new Date());
+      if (this.datePicker) this.datePicker.value = this._formatDateInput(new Date());
       this.loadForSelectedDate();
     }
   }
@@ -290,7 +313,7 @@ class GalleryCard extends HTMLElement {
   }
 
   _folderFromDateInput() {
-    const v = this.datePicker.value;
+    const v = this.datePicker?.value;
     if (!v) return null;
     const [yyyy, mm, dd] = v.split('-').map(Number);
     const yy = String(yyyy % 100).padStart(2,'0');
@@ -320,7 +343,9 @@ class GalleryCard extends HTMLElement {
         type: "media_source/browse_media",
         media_content_id: `${this.contentRoot}/${folderName}`
       });
-    } catch {
+    } catch (err) {
+      // Gracefully reset on error
+      console.warn('[gallery-card] browse_media failed:', err);
       this._renderThumbs([]);
       this._renderPreview(null);
       this.items = [];
@@ -409,6 +434,8 @@ class GalleryCard extends HTMLElement {
       } else {
         const img = document.createElement('img');
         img.src = item.url;
+        img.loading = 'lazy';
+        img.decoding = 'async';
         fig.appendChild(img);
         const badge = document.createElement('span');
         badge.className = 'badge';
@@ -442,6 +469,8 @@ class GalleryCard extends HTMLElement {
       const img = document.createElement('img');
       img.src = item.url;
       img.className = 'preview-media image';
+      img.loading = 'lazy';
+      img.decoding = 'async';
       img.addEventListener('click', () => this.openModal());
       this.previewSlot.appendChild(img);
       badgeText = '🖼';
@@ -499,6 +528,8 @@ class GalleryCard extends HTMLElement {
     const item = this.items[this.currentIndex];
     if (!item) return;
 
+    this._lastFocus = document.activeElement;
+
     this.modalMedia.innerHTML = '';
     if (item.isVideo) {
       const v = document.createElement('video');
@@ -510,16 +541,25 @@ class GalleryCard extends HTMLElement {
     } else {
       const img = document.createElement('img');
       img.src = item.url;
+      img.decoding = 'async';
       this.modalMedia.appendChild(img);
     }
     this.modalCaption.textContent = item.title || '';
     this.modal.classList.add('open');
-    this.shadowRoot.host.focus?.();
+    this.modal.setAttribute('aria-hidden', 'false');
+    this.focus();
   }
 
   closeModal() {
     this.modal.classList.remove('open');
+    this.modal.setAttribute('aria-hidden', 'true');
     this.modalMedia.innerHTML = '';
+    // Restore focus to the card for continued keyboard nav
+    if (this._lastFocus && typeof this._lastFocus.focus === 'function') {
+      this._lastFocus.focus();
+    } else {
+      this.focus();
+    }
   }
 
   getCardSize() { return 4; }
