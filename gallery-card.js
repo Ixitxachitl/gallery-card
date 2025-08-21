@@ -1,4 +1,4 @@
-console.log(`%cgallery-card\n%cVersion: ${'1.1.4'}`, 'color: rebeccapurple; font-weight: bold;', '');
+console.log(`%cgallery-card\n%cVersion: ${'1.1.5'}`, 'color: rebeccapurple; font-weight: bold;', '');
 
 window.customCards = window.customCards || [];
 window.customCards.push({
@@ -73,31 +73,37 @@ class GalleryCard extends HTMLElement {
           padding: var(--ha-card-padding, 16px);
           color: var(--primary-text-color);
         }
-
+      
         .toolbar { display:flex; align-items:center; justify-content:space-between; margin-bottom:4px; }
         .date-picker { margin:0; }
         .refresh-btn { border:none; background:transparent; cursor:pointer; font-size:18px; line-height:1; padding:0 4px; opacity:.8; }
         .refresh-btn:hover { opacity:1; }
-
+      
         /* Thumbs (tight, theme-friendly) */
-        .thumb-row { display:flex; overflow-x:auto; gap:var(--gc-thumb-gap, 1px); padding:2px 0; }
+        .thumb-row {
+          display:flex;
+          overflow-x: scroll;      /* scrollbar track always shown */
+          gap:var(--gc-thumb-gap, 1px);
+          padding:2px 0;
+          min-height: var(--gc-thumb-h, 72px);
+        }
         .thumb { position:relative; margin:0; padding:0; line-height:0; }
         .thumb img, .thumb video {
           height: var(--gc-thumb-h, 72px);
           width: auto; display:block;
           cursor:pointer; border:1px solid transparent; border-radius:3px;
-          object-fit: contain; /* preserve aspect */
+          object-fit: contain;
           background: var(--card-background-color);
         }
         .thumb.selected img, .thumb.selected video { border-color: var(--primary-color); }
-
+      
         /* Type badge (thumb) */
         .badge {
           position:absolute; top:2px; right:2px;
           background:rgba(0,0,0,.65); color:#fff; font-size:10px; padding:2px 5px; border-radius:10px; line-height:1;
           pointer-events:none;
         }
-
+      
         /* Caption overlay (thumb) */
         .thumb-cap {
           position:absolute; left:2px; bottom:2px; right:auto;
@@ -108,27 +114,31 @@ class GalleryCard extends HTMLElement {
           overflow:hidden; text-overflow:ellipsis; white-space:nowrap;
           pointer-events:none;
         }
-
+      
         /* Preview */
         .preview-container {
           position: relative;
           display: flex;
           align-items: center;
           justify-content: center;
-          min-height: var(--gc-preview-max-h, 420px);
           max-height: var(--gc-preview-max-h, 420px);
         }
+        /* when empty, reserve full height */
+        :host([data-empty]) .preview-container {
+          min-height: var(--gc-preview-max-h, 420px);
+        }
+      
         .preview-slot { position:relative; width:100%; display:flex; align-items:center; justify-content:center; }
         .preview-media {
           max-width: 100%;
-          max-height: var(--gc-preview-max-h, 420px);
+          max-height: 100%;
           width: auto; height: auto;
           object-fit: contain; display:block;
           border-radius: var(--ha-card-border-radius, 12px);
           background: var(--card-background-color);
         }
         .preview-media.image, .preview-media.video { cursor:zoom-in; }
-
+      
         /* Badge + caption (preview) */
         .preview-badge {
           position:absolute; right:8px; bottom:8px;
@@ -143,7 +153,7 @@ class GalleryCard extends HTMLElement {
           overflow:hidden; text-overflow:ellipsis; white-space:nowrap;
           z-index:2; pointer-events:none;
         }
-
+      
         /* Prev/Next */
         .nav-btn {
           position:absolute; top:8px; padding:6px 10px; background:rgba(0,0,0,.55);
@@ -151,7 +161,7 @@ class GalleryCard extends HTMLElement {
         }
         .nav-prev { left:8px; }
         .nav-next { right:8px; }
-
+      
         /* Modal */
         .modal { display:none; position:fixed; z-index:9999; inset:0; background:rgba(0,0,0,.9); }
         .modal.open { display:block; }
@@ -160,59 +170,38 @@ class GalleryCard extends HTMLElement {
         .modal-content img, .modal-content video { width:100%; height:auto; max-height:85vh; object-fit:contain; }
         .modal-caption { color:#ccc; text-align:center; margin-top:8px; font-size:14px; }
         .modal-close { position:absolute; z-index: 2; top:10px; right:14px; font-size:28px; color:#fff; cursor:pointer; user-select:none; pointer-events:auto; }
-
+      
         /* Toggles */
         :host([data-caps-off]) .thumb-cap,
         :host([data-caps-off]) .preview-cap { display:none; }
         :host([data-badges-off]) .badge,
         :host([data-badges-off]) .preview-badge { display:none; }
-
+      
         /* Content wrapper controls vertical vs horizontal layout */
-        .content { display: block; }
-        
+        .content { display: block; scrollbar-gutter: stable both-edges; }
+      
         /* Horizontal: thumbs as a vertical sidebar, preview on the right */
         :host([data-horizontal]) .content {
           display: flex;
           gap: var(--gc-layout-gap, 8px);
           align-items: stretch;
         }
-        
-        /* Horizontal mode: make thumbs a vertical list/column */
         :host([data-horizontal]) .thumb-row {
           flex-direction: column;
           width: var(--gc-sidebar-w, 120px);
           flex: 0 0 var(--gc-sidebar-w, 120px);
-          overflow-y: auto;
+          overflow-y: scroll;
           overflow-x: hidden;
-          max-height: var(--gc-preview-max-h, 420px); /* keep list height aligned with preview */
-          padding: 0;                                   /* tighter */
-        }
-        
-        /* Give the preview the remaining space in horizontal mode */
-        :host([data-horizontal]) .preview-container {
-          flex: 1 1 auto;
-          min-width: 0; /* allow flexbox to shrink properly */
-        }
-
-        /* Thumbs strip keeps its height and shows scrollbar even when empty */
-        .thumb-row {
-          min-height: var(--gc-thumb-h, 72px);
-          overflow-x: scroll;            /* show the horizontal scrollbar track */
-        }
-        
-        /* Horizontal layout: make the left column keep full preview height and show scrollbar */
-        :host([data-horizontal]) .thumb-row {
           max-height: var(--gc-preview-max-h, 420px);
           min-height: var(--gc-preview-max-h, 420px);
-          overflow-y: scroll;            /* show the vertical scrollbar track */
+          padding: 0;
         }
-        
-        /* Optional: consistent gutter so content doesn't jump when scrollbars appear/disappear */
-        .content {
-          scrollbar-gutter: stable both-edges;
+        :host([data-horizontal]) .preview-container {
+          flex: 1 1 auto;
+          min-width: 0;
         }
-        
-        /* Optional: subtle empty states */
+      
+        /* Empty states */
         .thumb-row:empty::before {
           content: 'No media for this date';
           display: inline-flex;
@@ -224,7 +213,7 @@ class GalleryCard extends HTMLElement {
         }
         .preview-empty {
           width: 100%;
-          height: 100%; /* now fills the fixed-height preview container */
+          height: 100%;
           display: flex;
           align-items: center;
           justify-content: center;
@@ -503,12 +492,33 @@ class GalleryCard extends HTMLElement {
 
   _renderPreview(item) {
     this.previewSlot.innerHTML = '';
+  
     if (!item) {
+      this.setAttribute('data-empty', '');
       const empty = document.createElement('div');
       empty.className = 'preview-empty';
       empty.textContent = 'Nothing to show for this date';
       this.previewSlot.appendChild(empty);
       return;
+    }
+  
+    this.removeAttribute('data-empty');
+  
+    if (item.isVideo) {
+      const v = document.createElement('video');
+      v.src = item.url + '#t=0.1';
+      v.className = 'preview-media video';
+      v.muted = true; v.playsInline = true; v.preload = 'metadata';
+      v.addEventListener('click', () => this.openModal());
+      this.previewSlot.appendChild(v);
+    } else {
+      const img = document.createElement('img');
+      img.src = item.url;
+      img.className = 'preview-media image';
+      img.loading = 'lazy';
+      img.decoding = 'async';
+      img.addEventListener('click', () => this.openModal());
+      this.previewSlot.appendChild(img);
     }
 
     let badgeText = '';
