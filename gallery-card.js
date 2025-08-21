@@ -1,4 +1,4 @@
-console.log(`%cgallery-card\n%cVersion: ${'1.2'}`, 'color: rebeccapurple; font-weight: bold;', '');
+console.log(`%cgallery-card\n%cVersion: ${'1.2.1'}`, 'color: rebeccapurple; font-weight: bold;', '');
 
 window.customCards = window.customCards || [];
 window.customCards.push({
@@ -115,7 +115,7 @@ class GalleryCard extends HTMLElement {
         display: flex;
         align-items: center;
         justify-content: center;
-        max-height: var(--gc-preview-max-h, 420px);
+        max-height: var(--gc-preview-max-h, 480px);
         overflow: hidden;
       }
     
@@ -208,7 +208,7 @@ class GalleryCard extends HTMLElement {
         flex: 0 0 var(--gc-sidebar-w, 120px);
         overflow-y: auto;
         overflow-x: hidden;
-        max-height: var(--gc-preview-max-h, 420px);
+        max-height: var(--gc-preview-max-h, 480px);
         padding: 0;
       }
     
@@ -224,8 +224,8 @@ class GalleryCard extends HTMLElement {
         overflow-x: scroll;
       }
       :host([data-horizontal]) .thumb-row {
-        max-height: var(--gc-preview-max-h, 420px);
-        min-height: var(--gc-preview-max-h, 420px);
+        max-height: var(--gc-preview-max-h, 480px);
+        min-height: var(--gc-preview-max-h, 480px);
         overflow-y: scroll;
       }
     
