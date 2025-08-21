@@ -1,4 +1,4 @@
-console.log(`%cgallery-card\n%cVersion: ${'1.1.3'}`, 'color: rebeccapurple; font-weight: bold;', '');
+console.log(`%cgallery-card\n%cVersion: ${'1.1.4'}`, 'color: rebeccapurple; font-weight: bold;', '');
 
 window.customCards = window.customCards || [];
 window.customCards.push({
@@ -110,7 +110,14 @@ class GalleryCard extends HTMLElement {
         }
 
         /* Preview */
-        .preview-container { position:relative; display:flex; align-items:center; justify-content:center; }
+        .preview-container {
+          position: relative;
+          display: flex;
+          align-items: center;
+          justify-content: center;
+          min-height: var(--gc-preview-max-h, 420px);
+          max-height: var(--gc-preview-max-h, 420px);
+        }
         .preview-slot { position:relative; width:100%; display:flex; align-items:center; justify-content:center; }
         .preview-media {
           max-width: 100%;
@@ -200,11 +207,6 @@ class GalleryCard extends HTMLElement {
           overflow-y: scroll;            /* show the vertical scrollbar track */
         }
         
-        /* Preview area reserves full height even when empty */
-        .preview-container {
-          min-height: var(--gc-preview-max-h, 420px);
-        }
-        
         /* Optional: consistent gutter so content doesn't jump when scrollbars appear/disappear */
         .content {
           scrollbar-gutter: stable both-edges;
@@ -222,11 +224,12 @@ class GalleryCard extends HTMLElement {
         }
         .preview-empty {
           width: 100%;
-          height: var(--gc-preview-max-h, 420px);
-          border-radius: var(--ha-card-border-radius, 12px);
-          background: var(--card-background-color);
-          display: flex; align-items: center; justify-content: center;
-          color: var(--secondary-text-color); opacity: 0.8;
+          height: 100%; /* now fills the fixed-height preview container */
+          display: flex;
+          align-items: center;
+          justify-content: center;
+          color: var(--secondary-text-color);
+          opacity: 0.7;
           user-select: none;
         }
       </style>
