@@ -1,4 +1,4 @@
-console.log(`%cgallery-card\n%cVersion: ${'1.1.7'}`, 'color: rebeccapurple; font-weight: bold;', '');
+console.log(`%cgallery-card\n%cVersion: ${'1.1.8'}`, 'color: rebeccapurple; font-weight: bold;', '');
 
 window.customCards = window.customCards || [];
 window.customCards.push({
@@ -80,14 +80,7 @@ class GalleryCard extends HTMLElement {
       .refresh-btn:hover { opacity:1; }
     
       /* Thumbs (tight, theme-friendly) */
-      .thumb-row {
-        display:flex;
-        overflow-x:auto;
-        gap:var(--gc-thumb-gap, 1px);
-        padding:2px 0;
-        min-height: var(--gc-thumb-h, 72px);
-        overflow-x: scroll;
-      }
+      .thumb-row { display:flex; overflow-x:auto; gap:var(--gc-thumb-gap, 1px); padding:2px 0; }
       .thumb { position:relative; margin:0; padding:0; line-height:0; }
       .thumb img, .thumb video {
         height: var(--gc-thumb-h, 72px);
@@ -125,17 +118,24 @@ class GalleryCard extends HTMLElement {
         max-height: var(--gc-preview-max-h, 420px);
         overflow: hidden;
       }
+      /* Clamp when empty */
       :host([data-empty]) .preview-container {
         height: var(--gc-preview-max-h, 420px);
-        max-height: none;
+        min-height: var(--gc-preview-max-h, 420px);
+        max-height: var(--gc-preview-max-h, 420px);
+        align-self: flex-start;
       }
+      :host([data-horizontal][data-empty]) .preview-container {
+        flex: 0 0 var(--gc-preview-max-h, 420px);
+      }
+    
       .preview-slot {
         position:relative;
         width:100%;
+        height:100%;
         display:flex;
         align-items:center;
         justify-content:center;
-        height: 100%;
       }
       .preview-media {
         max-width: 100%;
@@ -146,6 +146,8 @@ class GalleryCard extends HTMLElement {
         background: var(--card-background-color);
       }
       .preview-media.image, .preview-media.video { cursor:zoom-in; }
+    
+      /* Empty placeholder */
       .preview-empty {
         width: 100%;
         height: 100%;
@@ -196,14 +198,16 @@ class GalleryCard extends HTMLElement {
       :host([data-badges-off]) .preview-badge { display:none; }
     
       /* Content wrapper controls vertical vs horizontal layout */
-      .content { display: block; scrollbar-gutter: stable both-edges; }
+      .content { display: block; }
       
-      /* Horizontal layout */
+      /* Horizontal: thumbs as a vertical sidebar, preview on the right */
       :host([data-horizontal]) .content {
         display: flex;
         gap: var(--gc-layout-gap, 8px);
         align-items: stretch;
       }
+      
+      /* Horizontal mode: thumbs column */
       :host([data-horizontal]) .thumb-row {
         flex-direction: column;
         width: var(--gc-sidebar-w, 120px);
@@ -211,18 +215,28 @@ class GalleryCard extends HTMLElement {
         overflow-y: auto;
         overflow-x: hidden;
         max-height: var(--gc-preview-max-h, 420px);
-        min-height: var(--gc-preview-max-h, 420px);
         padding: 0;
       }
+      
+      /* Horizontal: preview flexes */
       :host([data-horizontal]) .preview-container {
         flex: 1 1 auto;
         min-width: 0;
       }
-      :host([data-empty][data-horizontal]) .preview-container {
-        flex: 0 0 auto;
+    
+      /* Thumbs strip baseline height */
+      .thumb-row {
+        min-height: var(--gc-thumb-h, 72px);
+        overflow-x: scroll;
+      }
+      :host([data-horizontal]) .thumb-row {
+        max-height: var(--gc-preview-max-h, 420px);
+        min-height: var(--gc-preview-max-h, 420px);
+        overflow-y: scroll;
       }
     
-      /* Empty states */
+      .content { scrollbar-gutter: stable both-edges; }
+    
       .thumb-row:empty::before {
         content: 'No media for this date';
         display: inline-flex;
