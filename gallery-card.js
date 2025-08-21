@@ -1,4 +1,4 @@
-console.log(`%cgallery-card\n%cVersion: ${'1.1.5'}`, 'color: rebeccapurple; font-weight: bold;', '');
+console.log(`%cgallery-card\n%cVersion: ${'1.1.6'}`, 'color: rebeccapurple; font-weight: bold;', '');
 
 window.customCards = window.customCards || [];
 window.customCards.push({
@@ -442,7 +442,12 @@ class GalleryCard extends HTMLElement {
     this.items = filtered;
     this.currentIndex = this.items.length ? 0 : -1;
     this._renderThumbs(this.items);
-    this._renderPreview(this.items[this.currentIndex] || null);
+    // Single source of truth for preview rendering:
+    if (this.currentIndex >= 0) {
+      this.showItem(this.currentIndex);
+    } else {
+      this._renderPreview(null);
+    }
     this._highlightThumb(this.currentIndex);
     this._scrollThumbIntoView(this.currentIndex);
   }
@@ -504,27 +509,11 @@ class GalleryCard extends HTMLElement {
   
     this.removeAttribute('data-empty');
   
-    if (item.isVideo) {
-      const v = document.createElement('video');
-      v.src = item.url + '#t=0.1';
-      v.className = 'preview-media video';
-      v.muted = true; v.playsInline = true; v.preload = 'metadata';
-      v.addEventListener('click', () => this.openModal());
-      this.previewSlot.appendChild(v);
-    } else {
-      const img = document.createElement('img');
-      img.src = item.url;
-      img.className = 'preview-media image';
-      img.loading = 'lazy';
-      img.decoding = 'async';
-      img.addEventListener('click', () => this.openModal());
-      this.previewSlot.appendChild(img);
-    }
-
+    // Create ONE media element
     let badgeText = '';
     if (item.isVideo) {
       const v = document.createElement('video');
-      v.src = item.url + '#t=0.1'; // still frame
+      v.src = item.url + '#t=0.1';
       v.className = 'preview-media video';
       v.muted = true; v.playsInline = true; v.preload = 'metadata';
       v.addEventListener('click', () => this.openModal());
@@ -540,12 +529,13 @@ class GalleryCard extends HTMLElement {
       this.previewSlot.appendChild(img);
       badgeText = '🖼';
     }
-
+  
+    // Badge + caption
     const badge = document.createElement('span');
     badge.className = 'preview-badge';
     badge.textContent = badgeText;
     this.previewSlot.appendChild(badge);
-
+  
     const pcap = document.createElement('span');
     pcap.className = 'preview-cap';
     pcap.textContent = item.title || '';
