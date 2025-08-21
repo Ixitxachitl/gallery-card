@@ -1,4 +1,4 @@
-console.log(`%cgallery-card\n%cVersion: ${'1.1.9'}`, 'color: rebeccapurple; font-weight: bold;', '');
+console.log(`%cgallery-card\n%cVersion: ${'1.2'}`, 'color: rebeccapurple; font-weight: bold;', '');
 
 window.customCards = window.customCards || [];
 window.customCards.push({
@@ -240,6 +240,13 @@ class GalleryCard extends HTMLElement {
         color: var(--secondary-text-color);
         opacity: 0.7;
       }
+      
+      :host([data-empty]) .nav-btn { 
+        display: none; 
+      }
+      :host([data-single]) .nav-btn { 
+        display: none; 
+      }
     </style>
 
       <ha-card class="card">
@@ -459,6 +466,7 @@ class GalleryCard extends HTMLElement {
     filtered.sort((a, b) => b._sortKey.localeCompare(a._sortKey));
     
     this.items = filtered;
+    this.toggleAttribute('data-single', this.items.length === 1);
     this.currentIndex = this.items.length ? 0 : -1;
     this._renderThumbs(this.items);
     // Single source of truth for preview rendering:
