@@ -1,3 +1,5 @@
+console.log(`%cgallery-card\n%cVersion: ${'1.1.3'}`, 'color: rebeccapurple; font-weight: bold;', '');
+
 window.customCards = window.customCards || [];
 window.customCards.push({
   type: "gallery-card",
@@ -183,6 +185,49 @@ class GalleryCard extends HTMLElement {
         :host([data-horizontal]) .preview-container {
           flex: 1 1 auto;
           min-width: 0; /* allow flexbox to shrink properly */
+        }
+
+        /* Thumbs strip keeps its height and shows scrollbar even when empty */
+        .thumb-row {
+          min-height: var(--gc-thumb-h, 72px);
+          overflow-x: scroll;            /* show the horizontal scrollbar track */
+        }
+        
+        /* Horizontal layout: make the left column keep full preview height and show scrollbar */
+        :host([data-horizontal]) .thumb-row {
+          max-height: var(--gc-preview-max-h, 420px);
+          min-height: var(--gc-preview-max-h, 420px);
+          overflow-y: scroll;            /* show the vertical scrollbar track */
+        }
+        
+        /* Preview area reserves full height even when empty */
+        .preview-container {
+          min-height: var(--gc-preview-max-h, 420px);
+        }
+        
+        /* Optional: consistent gutter so content doesn't jump when scrollbars appear/disappear */
+        .content {
+          scrollbar-gutter: stable both-edges;
+        }
+        
+        /* Optional: subtle empty states */
+        .thumb-row:empty::before {
+          content: 'No media for this date';
+          display: inline-flex;
+          align-items: center;
+          height: var(--gc-thumb-h, 72px);
+          padding: 0 8px;
+          color: var(--secondary-text-color);
+          opacity: 0.7;
+        }
+        .preview-empty {
+          width: 100%;
+          height: var(--gc-preview-max-h, 420px);
+          border-radius: var(--ha-card-border-radius, 12px);
+          background: var(--card-background-color);
+          display: flex; align-items: center; justify-content: center;
+          color: var(--secondary-text-color); opacity: 0.8;
+          user-select: none;
         }
       </style>
 
@@ -455,7 +500,13 @@ class GalleryCard extends HTMLElement {
 
   _renderPreview(item) {
     this.previewSlot.innerHTML = '';
-    if (!item) return;
+    if (!item) {
+      const empty = document.createElement('div');
+      empty.className = 'preview-empty';
+      empty.textContent = 'Nothing to show for this date';
+      this.previewSlot.appendChild(empty);
+      return;
+    }
 
     let badgeText = '';
     if (item.isVideo) {
