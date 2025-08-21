@@ -1,4 +1,4 @@
-console.log(`%cgallery-card\n%cVersion: ${'1.1.6'}`, 'color: rebeccapurple; font-weight: bold;', '');
+console.log(`%cgallery-card\n%cVersion: ${'1.1.7'}`, 'color: rebeccapurple; font-weight: bold;', '');
 
 window.customCards = window.customCards || [];
 window.customCards.push({
@@ -64,164 +64,175 @@ class GalleryCard extends HTMLElement {
 
   _render() {
     this.shadowRoot.innerHTML = `
-      <style>
-        :host { display:block; }
-        .card {
-          background: var(--ha-card-background, var(--card-background-color, white));
-          border-radius: var(--ha-card-border-radius, 12px);
-          box-shadow: var(--ha-card-box-shadow, none);
-          padding: var(--ha-card-padding, 16px);
-          color: var(--primary-text-color);
-        }
+    <style>
+      :host { display:block; }
+      .card {
+        background: var(--ha-card-background, var(--card-background-color, white));
+        border-radius: var(--ha-card-border-radius, 12px);
+        box-shadow: var(--ha-card-box-shadow, none);
+        padding: var(--ha-card-padding, 16px);
+        color: var(--primary-text-color);
+      }
+    
+      .toolbar { display:flex; align-items:center; justify-content:space-between; margin-bottom:4px; }
+      .date-picker { margin:0; }
+      .refresh-btn { border:none; background:transparent; cursor:pointer; font-size:18px; line-height:1; padding:0 4px; opacity:.8; }
+      .refresh-btn:hover { opacity:1; }
+    
+      /* Thumbs (tight, theme-friendly) */
+      .thumb-row {
+        display:flex;
+        overflow-x:auto;
+        gap:var(--gc-thumb-gap, 1px);
+        padding:2px 0;
+        min-height: var(--gc-thumb-h, 72px);
+        overflow-x: scroll;
+      }
+      .thumb { position:relative; margin:0; padding:0; line-height:0; }
+      .thumb img, .thumb video {
+        height: var(--gc-thumb-h, 72px);
+        width: auto; display:block;
+        cursor:pointer; border:1px solid transparent; border-radius:3px;
+        object-fit: contain;
+        background: var(--card-background-color);
+      }
+      .thumb.selected img, .thumb.selected video { border-color: var(--primary-color); }
+    
+      /* Type badge (thumb) */
+      .badge {
+        position:absolute; top:2px; right:2px;
+        background:rgba(0,0,0,.65); color:#fff; font-size:10px; padding:2px 5px; border-radius:10px; line-height:1;
+        pointer-events:none;
+      }
+    
+      /* Caption overlay (thumb) */
+      .thumb-cap {
+        position:absolute; left:2px; bottom:2px; right:auto;
+        max-width:80px;
+        background:rgba(0,0,0,.55); color:#fff;
+        font-size:9px; line-height:1.1;
+        padding:1px 3px; border-radius:3px;
+        overflow:hidden; text-overflow:ellipsis; white-space:nowrap;
+        pointer-events:none;
+      }
+    
+      /* Preview */
+      .preview-container {
+        position: relative;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        max-height: var(--gc-preview-max-h, 420px);
+        overflow: hidden;
+      }
+      :host([data-empty]) .preview-container {
+        height: var(--gc-preview-max-h, 420px);
+        max-height: none;
+      }
+      .preview-slot {
+        position:relative;
+        width:100%;
+        display:flex;
+        align-items:center;
+        justify-content:center;
+        height: 100%;
+      }
+      .preview-media {
+        max-width: 100%;
+        max-height: 100%;
+        width: auto; height: auto;
+        object-fit: contain; display:block;
+        border-radius: var(--ha-card-border-radius, 12px);
+        background: var(--card-background-color);
+      }
+      .preview-media.image, .preview-media.video { cursor:zoom-in; }
+      .preview-empty {
+        width: 100%;
+        height: 100%;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        color: var(--secondary-text-color);
+        opacity: 0.7;
+        user-select: none;
+      }
+    
+      /* Badge + caption (preview) */
+      .preview-badge {
+        position:absolute; right:8px; bottom:8px;
+        background:rgba(0,0,0,.65); color:#fff; font-size:12px; padding:3px 7px; border-radius:12px; line-height:1;
+        z-index:2; pointer-events:none;
+      }
+      .preview-cap {
+        position:absolute; left:8px; bottom:8px; right:60px;
+        background:rgba(0,0,0,.55); color:#fff;
+        font-size:12px; line-height:1.2;
+        padding:3px 6px; border-radius:6px;
+        overflow:hidden; text-overflow:ellipsis; white-space:nowrap;
+        z-index:2; pointer-events:none;
+      }
+    
+      /* Prev/Next */
+      .nav-btn {
+        position:absolute; top:8px; padding:6px 10px; background:rgba(0,0,0,.55);
+        color:#fff; border:none; border-radius:6px; cursor:pointer; font-size:14px; line-height:1; user-select:none; z-index:3;
+      }
+      .nav-prev { left:8px; }
+      .nav-next { right:8px; }
+    
+      /* Modal */
+      .modal { display:none; position:fixed; z-index:9999; inset:0; background:rgba(0,0,0,.9); }
+      .modal.open { display:block; }
+      .modal-content { position:absolute; top:50%; left:50%; transform:translate(-50%,-50%); max-width:95vw; max-height:90vh; }
+      .modal-media { position: relative; z-index: 1; }
+      .modal-content img, .modal-content video { width:100%; height:auto; max-height:85vh; object-fit:contain; }
+      .modal-caption { color:#ccc; text-align:center; margin-top:8px; font-size:14px; }
+      .modal-close { position:absolute; z-index: 2; top:10px; right:14px; font-size:28px; color:#fff; cursor:pointer; user-select:none; pointer-events:auto; }
+    
+      /* Toggles */
+      :host([data-caps-off]) .thumb-cap,
+      :host([data-caps-off]) .preview-cap { display:none; }
+      :host([data-badges-off]) .badge,
+      :host([data-badges-off]) .preview-badge { display:none; }
+    
+      /* Content wrapper controls vertical vs horizontal layout */
+      .content { display: block; scrollbar-gutter: stable both-edges; }
       
-        .toolbar { display:flex; align-items:center; justify-content:space-between; margin-bottom:4px; }
-        .date-picker { margin:0; }
-        .refresh-btn { border:none; background:transparent; cursor:pointer; font-size:18px; line-height:1; padding:0 4px; opacity:.8; }
-        .refresh-btn:hover { opacity:1; }
-      
-        /* Thumbs (tight, theme-friendly) */
-        .thumb-row {
-          display:flex;
-          overflow-x: scroll;      /* scrollbar track always shown */
-          gap:var(--gc-thumb-gap, 1px);
-          padding:2px 0;
-          min-height: var(--gc-thumb-h, 72px);
-        }
-        .thumb { position:relative; margin:0; padding:0; line-height:0; }
-        .thumb img, .thumb video {
-          height: var(--gc-thumb-h, 72px);
-          width: auto; display:block;
-          cursor:pointer; border:1px solid transparent; border-radius:3px;
-          object-fit: contain;
-          background: var(--card-background-color);
-        }
-        .thumb.selected img, .thumb.selected video { border-color: var(--primary-color); }
-      
-        /* Type badge (thumb) */
-        .badge {
-          position:absolute; top:2px; right:2px;
-          background:rgba(0,0,0,.65); color:#fff; font-size:10px; padding:2px 5px; border-radius:10px; line-height:1;
-          pointer-events:none;
-        }
-      
-        /* Caption overlay (thumb) */
-        .thumb-cap {
-          position:absolute; left:2px; bottom:2px; right:auto;
-          max-width:80px;
-          background:rgba(0,0,0,.55); color:#fff;
-          font-size:9px; line-height:1.1;
-          padding:1px 3px; border-radius:3px;
-          overflow:hidden; text-overflow:ellipsis; white-space:nowrap;
-          pointer-events:none;
-        }
-      
-        /* Preview */
-        .preview-container {
-          position: relative;
-          display: flex;
-          align-items: center;
-          justify-content: center;
-          max-height: var(--gc-preview-max-h, 420px);
-        }
-        /* when empty, reserve full height */
-        :host([data-empty]) .preview-container {
-          min-height: var(--gc-preview-max-h, 420px);
-        }
-      
-        .preview-slot { position:relative; width:100%; display:flex; align-items:center; justify-content:center; }
-        .preview-media {
-          max-width: 100%;
-          max-height: 100%;
-          width: auto; height: auto;
-          object-fit: contain; display:block;
-          border-radius: var(--ha-card-border-radius, 12px);
-          background: var(--card-background-color);
-        }
-        .preview-media.image, .preview-media.video { cursor:zoom-in; }
-      
-        /* Badge + caption (preview) */
-        .preview-badge {
-          position:absolute; right:8px; bottom:8px;
-          background:rgba(0,0,0,.65); color:#fff; font-size:12px; padding:3px 7px; border-radius:12px; line-height:1;
-          z-index:2; pointer-events:none;
-        }
-        .preview-cap {
-          position:absolute; left:8px; bottom:8px; right:60px;
-          background:rgba(0,0,0,.55); color:#fff;
-          font-size:12px; line-height:1.2;
-          padding:3px 6px; border-radius:6px;
-          overflow:hidden; text-overflow:ellipsis; white-space:nowrap;
-          z-index:2; pointer-events:none;
-        }
-      
-        /* Prev/Next */
-        .nav-btn {
-          position:absolute; top:8px; padding:6px 10px; background:rgba(0,0,0,.55);
-          color:#fff; border:none; border-radius:6px; cursor:pointer; font-size:14px; line-height:1; user-select:none; z-index:3;
-        }
-        .nav-prev { left:8px; }
-        .nav-next { right:8px; }
-      
-        /* Modal */
-        .modal { display:none; position:fixed; z-index:9999; inset:0; background:rgba(0,0,0,.9); }
-        .modal.open { display:block; }
-        .modal-content { position:absolute; top:50%; left:50%; transform:translate(-50%,-50%); max-width:95vw; max-height:90vh; }
-        .modal-media { position: relative; z-index: 1; }
-        .modal-content img, .modal-content video { width:100%; height:auto; max-height:85vh; object-fit:contain; }
-        .modal-caption { color:#ccc; text-align:center; margin-top:8px; font-size:14px; }
-        .modal-close { position:absolute; z-index: 2; top:10px; right:14px; font-size:28px; color:#fff; cursor:pointer; user-select:none; pointer-events:auto; }
-      
-        /* Toggles */
-        :host([data-caps-off]) .thumb-cap,
-        :host([data-caps-off]) .preview-cap { display:none; }
-        :host([data-badges-off]) .badge,
-        :host([data-badges-off]) .preview-badge { display:none; }
-      
-        /* Content wrapper controls vertical vs horizontal layout */
-        .content { display: block; scrollbar-gutter: stable both-edges; }
-      
-        /* Horizontal: thumbs as a vertical sidebar, preview on the right */
-        :host([data-horizontal]) .content {
-          display: flex;
-          gap: var(--gc-layout-gap, 8px);
-          align-items: stretch;
-        }
-        :host([data-horizontal]) .thumb-row {
-          flex-direction: column;
-          width: var(--gc-sidebar-w, 120px);
-          flex: 0 0 var(--gc-sidebar-w, 120px);
-          overflow-y: scroll;
-          overflow-x: hidden;
-          max-height: var(--gc-preview-max-h, 420px);
-          min-height: var(--gc-preview-max-h, 420px);
-          padding: 0;
-        }
-        :host([data-horizontal]) .preview-container {
-          flex: 1 1 auto;
-          min-width: 0;
-        }
-      
-        /* Empty states */
-        .thumb-row:empty::before {
-          content: 'No media for this date';
-          display: inline-flex;
-          align-items: center;
-          height: var(--gc-thumb-h, 72px);
-          padding: 0 8px;
-          color: var(--secondary-text-color);
-          opacity: 0.7;
-        }
-        .preview-empty {
-          width: 100%;
-          height: 100%;
-          display: flex;
-          align-items: center;
-          justify-content: center;
-          color: var(--secondary-text-color);
-          opacity: 0.7;
-          user-select: none;
-        }
-      </style>
+      /* Horizontal layout */
+      :host([data-horizontal]) .content {
+        display: flex;
+        gap: var(--gc-layout-gap, 8px);
+        align-items: stretch;
+      }
+      :host([data-horizontal]) .thumb-row {
+        flex-direction: column;
+        width: var(--gc-sidebar-w, 120px);
+        flex: 0 0 var(--gc-sidebar-w, 120px);
+        overflow-y: auto;
+        overflow-x: hidden;
+        max-height: var(--gc-preview-max-h, 420px);
+        min-height: var(--gc-preview-max-h, 420px);
+        padding: 0;
+      }
+      :host([data-horizontal]) .preview-container {
+        flex: 1 1 auto;
+        min-width: 0;
+      }
+      :host([data-empty][data-horizontal]) .preview-container {
+        flex: 0 0 auto;
+      }
+    
+      /* Empty states */
+      .thumb-row:empty::before {
+        content: 'No media for this date';
+        display: inline-flex;
+        align-items: center;
+        height: var(--gc-thumb-h, 72px);
+        padding: 0 8px;
+        color: var(--secondary-text-color);
+        opacity: 0.7;
+      }
+    </style>
 
       <ha-card class="card">
         <div class="toolbar">
