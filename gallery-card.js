@@ -1,4 +1,4 @@
-console.log(`%cgallery-card\n%cVersion: ${'1.2.1'}`, 'color: rebeccapurple; font-weight: bold;', '');
+console.log(`%cgallery-card\n%cVersion: ${'1.3.0'}`, 'color: rebeccapurple; font-weight: bold;', '');
 
 window.customCards = window.customCards || [];
 window.customCards.push({
@@ -28,11 +28,20 @@ class GalleryCard extends HTMLElement {
       horizontal_layout: false,   // thumbs left, preview right when true
       sidebar_width: 146,         // px, width of the left thumb column (horizontal layout)
       layout_gap: 8,              // px, gap between thumbs column and preview
+      // NEW: safety caps
+      max_items: 1000,            // hard cap on items (0 = unlimited)
+      page_size: 200,             // render thumbs in chunks
     };
   }
 
   constructor() {
     super();
+    // --- NEW: lightweight URL cache + tiny LRU + semaphore ---
+    this._urlCache = new Map();  // media_content_id -> { url }
+    this._urlLRU = [];
+    this._urlCacheMax = 200;
+    this._resolveSem = 6;        // concurrent resolves
+    this._pendingResolves = 0;
   }
 
   setConfig(config) {
@@ -82,14 +91,14 @@ class GalleryCard extends HTMLElement {
       /* Thumbs (tight, theme-friendly) */
       .thumb-row { display:flex; overflow-x:auto; gap:var(--gc-thumb-gap, 1px); padding:2px 0; }
       .thumb { position:relative; margin:0; padding:0; line-height:0; }
-      .thumb img, .thumb video {
+      .thumb img {
         height: var(--gc-thumb-h, 72px);
         width: auto; display:block;
         cursor:pointer; border:1px solid transparent; border-radius:3px;
         object-fit: contain;
         background: var(--card-background-color);
       }
-      .thumb.selected img, .thumb.selected video { border-color: var(--primary-color); }
+      .thumb.selected img { border-color: var(--primary-color); }
     
       /* Type badge (thumb) */
       .badge {
@@ -122,7 +131,6 @@ class GalleryCard extends HTMLElement {
       .preview-slot {
         position:relative;
         width:100%;
-        /* IMPORTANT: let content decide height; don't force 100% */
         height:auto;
         display:flex;
         align-items:center;
@@ -139,10 +147,9 @@ class GalleryCard extends HTMLElement {
       }
       .preview-media.image, .preview-media.video { cursor:zoom-in; }
     
-      /* Empty placeholder — same sizing behavior as media (no fixed height) */
+      /* Empty placeholder */
       .preview-empty {
         width: 100%;
-        /* don't stretch container: no height:100% */
         height: auto;
         display: flex;
         align-items: center;
@@ -391,13 +398,41 @@ class GalleryCard extends HTMLElement {
 
   _compileRe(str) {
     try { return new RegExp(str); }
-    catch { return /^(.+)$/; }
+    catch { return /^(.*)$/; }
   }
 
   async loadForSelectedDate() {
     const folder = this._folderFromDateInput();
     if (!folder) return;
     await this._loadFolder(folder);
+  }
+
+  // --- NEW: pooled resolver with LRU cache ---
+  async _resolveWithPool(media_content_id) {
+    if (this._urlCache.has(media_content_id)) {
+      return this._urlCache.get(media_content_id);
+    }
+    // simple semaphore: spin/yield until a slot opens
+    while (this._pendingResolves >= this._resolveSem) {
+      await new Promise(r => setTimeout(r, 16));
+    }
+    this._pendingResolves++;
+    try {
+      const resolved = await this.hassInstance.callWS({
+        type: "media_source/resolve_media",
+        media_content_id
+      });
+      const entry = { url: resolved.url };
+      this._urlCache.set(media_content_id, entry);
+      this._urlLRU.push(media_content_id);
+      if (this._urlLRU.length > this._urlCacheMax) {
+        const evict = this._urlLRU.shift();
+        this._urlCache.delete(evict);
+      }
+      return entry;
+    } finally {
+      this._pendingResolves--;
+    }
   }
 
   async _loadFolder(folderName) {
@@ -408,7 +443,6 @@ class GalleryCard extends HTMLElement {
         media_content_id: `${this.contentRoot}/${folderName}`
       });
     } catch (err) {
-      // Gracefully reset on error
       console.warn('[gallery-card] browse_media failed:', err);
       this._renderThumbs([]);
       this._renderPreview(null);
@@ -423,53 +457,44 @@ class GalleryCard extends HTMLElement {
       return t.startsWith('image/') || t.startsWith('video/');
     });
 
-    const fileCaptionRe   = this._compileRe(this.config.file_pattern || '^(.+)$');
+    const fileCaptionRe   = this._compileRe(this.config.file_pattern || '^(.*)$');
     const timeRe          = this._compileRe(this.config.file_time_regex || '(\\d{2}:\\d{2}:\\d{2})');
 
-    const resolved = await Promise.all(
-      mediaItems.map(async (item) => {
-        const resolvedItem = await this.hassInstance.callWS({
-          type: "media_source/resolve_media",
-          media_content_id: item.media_content_id
-        });
+    // Do NOT resolve here. Parse only.
+    const parsed = mediaItems.map((item) => {
+      const isVideo = (item.media_content_type || '').startsWith('video/');
+      const fullName = (item.title && String(item.title)) ||
+                       (item.media_content_id.split('/').pop() || '');
+      const capMatch = fullName.match(fileCaptionRe);
+      const caption = (capMatch && capMatch[1]) ? capMatch[1] : fullName;
+      const sortMatch = fullName.match(timeRe);
+      const sortKey = (sortMatch && sortMatch[1]) ? sortMatch[1] : '';
+      return {
+        id: item.media_content_id,
+        title: caption,
+        isVideo,
+        _original: fullName,
+        _sortKey: sortKey,
+      };
+    });
 
-        const isVideo = (item.media_content_type || '').startsWith('video/');
-        const fullName = (item.title && String(item.title)) ||
-                         (item.media_content_id.split('/').pop() || '');
-
-        // Caption from FULL filename via file_pattern (group 1), else use full name as-is
-        const capMatch = fullName.match(fileCaptionRe);
-        const caption = (capMatch && capMatch[1]) ? capMatch[1] : fullName;
-
-        // Sort key from FULL filename via time regex (group 1)
-        const sortMatch = fullName.match(timeRe);
-        const sortKey = (sortMatch && sortMatch[1]) ? sortMatch[1] : '';
-
-        return {
-          url: resolvedItem.url,
-          title: caption,
-          isVideo,
-          _original: fullName,
-          _sortKey: sortKey
-        };
-      })
-    );
-
-    // Toggle filters (default both true)
+    // Toggles
     const showImages = this.config.show_images !== false;
     const showVideos = this.config.show_videos !== false;
-    
-    // Apply toggles
-    const filtered = resolved.filter(it => it.isVideo ? showVideos : showImages);
-    
+    const filtered = parsed.filter(it => it.isVideo ? showVideos : showImages);
+
     // Newest first by extracted key (e.g., HH:mm:ss)
     filtered.sort((a, b) => b._sortKey.localeCompare(a._sortKey));
-    
-    this.items = filtered;
+
+    // Safety cap
+    const max = Number(this.config.max_items) || 0;
+    const bounded = max > 0 ? filtered.slice(0, max) : filtered;
+
+    this.items = bounded;
     this.toggleAttribute('data-single', this.items.length === 1);
     this.currentIndex = this.items.length ? 0 : -1;
+
     this._renderThumbs(this.items);
-    // Single source of truth for preview rendering:
     if (this.currentIndex >= 0) {
       this.showItem(this.currentIndex);
     } else {
@@ -479,51 +504,102 @@ class GalleryCard extends HTMLElement {
     this._scrollThumbIntoView(this.currentIndex);
   }
 
+  // --- NEW: cleanup helper to free media memory ---
+  _cleanupMedia(container) {
+    if (!container) return;
+    container.querySelectorAll('video, img').forEach(el => {
+      try { el.removeAttribute('src'); } catch {}
+      try { el.load && el.load(); } catch {}
+    });
+    container.textContent = '';
+  }
+
+  // --- NEW: IntersectionObserver for lazy thumb hydration ---
+  _setupThumbObserver() {
+    if (this._thumbObserver) return;
+    const root = this.hasAttribute('data-horizontal') ? this.thumbRow : this.thumbRow;
+    this._thumbObserver = new IntersectionObserver((entries) => {
+      for (const e of entries) {
+        if (!e.isIntersecting) continue;
+        const fig = e.target;
+        this._thumbObserver.unobserve(fig);
+        this._hydrateThumb(fig);
+      }
+    }, { root, rootMargin: '200px', threshold: 0.01 });
+  }
+
+  async _hydrateThumb(fig) {
+    const idx = Number(fig.dataset.index);
+    const item = this.items?.[idx];
+    if (!item) return;
+    try {
+      const { url } = await this._resolveWithPool(item.id);
+      const img = fig.querySelector('img');
+      if (img) {
+        // For video thumbs we still use an <img> and let the server pick a frame
+        img.src = item.isVideo ? (url + '#t=0.1') : url;
+      }
+    } catch {}
+  }
+
   _renderThumbs(items) {
+    this._setupThumbObserver();
+    this._cleanupMedia(this.thumbRow);
     this.thumbRow.innerHTML = '';
-    items.forEach((item, index) => {
+    this._renderThumbsChunked(0);
+  }
+
+  _renderThumbsChunked(start = 0) {
+    const page = Number(this.config.page_size) || 200;
+    const end = Math.min(start + page, this.items.length);
+    const frag = document.createDocumentFragment();
+
+    for (let i = start; i < end; i++) {
+      const item = this.items[i];
       const fig = document.createElement('div');
       fig.className = 'thumb';
-      fig.dataset.index = String(index);
+      fig.dataset.index = String(i);
       fig.title = item._original || item.title;
 
       // a11y
       fig.tabIndex = 0;
       fig.setAttribute('role', 'button');
       fig.setAttribute('aria-label', `${item.isVideo ? 'Video' : 'Image'}: ${item.title}`);
-      
-      if (item.isVideo) {
-        const v = document.createElement('video');
-        v.src = item.url + '#t=0.1';
-        v.muted = true; v.playsInline = true; v.preload = 'metadata';
-        fig.appendChild(v);
-        const badge = document.createElement('span');
-        badge.className = 'badge';
-        badge.textContent = '▶';
-        fig.appendChild(badge);
-      } else {
-        const img = document.createElement('img');
-        img.src = item.url;
-        img.loading = 'lazy';
-        img.decoding = 'async';
-        fig.appendChild(img);
-        const badge = document.createElement('span');
-        badge.className = 'badge';
-        badge.textContent = '🖼';
-        fig.appendChild(badge);
-      }
+
+      // Always lightweight <img> (no src yet — set when intersecting)
+      const img = document.createElement('img');
+      img.loading = 'lazy';
+      img.decoding = 'async';
+      fig.appendChild(img);
+
+      const badge = document.createElement('span');
+      badge.className = 'badge';
+      badge.textContent = item.isVideo ? '▶' : '🖼';
+      fig.appendChild(badge);
 
       const cap = document.createElement('span');
       cap.className = 'thumb-cap';
       cap.textContent = item.title;
       fig.appendChild(cap);
 
-      this.thumbRow.appendChild(fig);
-    });
+      frag.appendChild(fig);
+    }
+
+    this.thumbRow.appendChild(frag);
+
+    for (let i = start; i < end; i++) {
+      const fig = this.thumbRow.querySelector(`.thumb[data-index="${i}"]`);
+      if (fig) this._thumbObserver.observe(fig);
+    }
+
+    if (end < this.items.length) {
+      // Yield to main thread; schedule next chunk lazily
+      (window.requestIdleCallback ? requestIdleCallback : setTimeout)(() => this._renderThumbsChunked(end), 0);
+    }
   }
 
-  _renderPreview(item) {
-    this.previewSlot.innerHTML = '';
+  async _renderPreview(item) {
+    this._cleanupMedia(this.previewSlot);
   
     if (!item) {
       this.setAttribute('data-empty', '');
@@ -535,38 +611,44 @@ class GalleryCard extends HTMLElement {
     }
   
     this.removeAttribute('data-empty');
+
+    try {
+      const { url } = await this._resolveWithPool(item.id);
+
+      let mediaEl, badgeText;
+      if (item.isVideo) {
+        mediaEl = document.createElement('video');
+        mediaEl.src = url;                 // only one video alive here
+        mediaEl.className = 'preview-media video';
+        mediaEl.muted = true; mediaEl.playsInline = true; mediaEl.preload = 'metadata';
+        mediaEl.addEventListener('click', () => this.openModal());
+        badgeText = '▶';
+      } else {
+        mediaEl = document.createElement('img');
+        mediaEl.src = url;
+        mediaEl.className = 'preview-media image';
+        mediaEl.loading = 'lazy';
+        mediaEl.decoding = 'async';
+        mediaEl.addEventListener('click', () => this.openModal());
+        badgeText = '🖼';
+      }
+      this.previewSlot.appendChild(mediaEl);
   
-    // Create ONE media element
-    let badgeText = '';
-    if (item.isVideo) {
-      const v = document.createElement('video');
-      v.src = item.url + '#t=0.1';
-      v.className = 'preview-media video';
-      v.muted = true; v.playsInline = true; v.preload = 'metadata';
-      v.addEventListener('click', () => this.openModal());
-      this.previewSlot.appendChild(v);
-      badgeText = '▶';
-    } else {
-      const img = document.createElement('img');
-      img.src = item.url;
-      img.className = 'preview-media image';
-      img.loading = 'lazy';
-      img.decoding = 'async';
-      img.addEventListener('click', () => this.openModal());
-      this.previewSlot.appendChild(img);
-      badgeText = '🖼';
+      const badge = document.createElement('span');
+      badge.className = 'preview-badge';
+      badge.textContent = badgeText;
+      this.previewSlot.appendChild(badge);
+  
+      const pcap = document.createElement('span');
+      pcap.className = 'preview-cap';
+      pcap.textContent = item.title || '';
+      this.previewSlot.appendChild(pcap);
+    } catch (e) {
+      const err = document.createElement('div');
+      err.className = 'preview-empty';
+      err.textContent = 'Failed to load media';
+      this.previewSlot.appendChild(err);
     }
-  
-    // Badge + caption
-    const badge = document.createElement('span');
-    badge.className = 'preview-badge';
-    badge.textContent = badgeText;
-    this.previewSlot.appendChild(badge);
-  
-    const pcap = document.createElement('span');
-    pcap.className = 'preview-cap';
-    pcap.textContent = item.title || '';
-    this.previewSlot.appendChild(pcap);
   }
 
   _highlightThumb(index) {
@@ -581,8 +663,6 @@ class GalleryCard extends HTMLElement {
   
     const horizontal = this.hasAttribute('data-horizontal');
   
-    // In horizontal layout, the thumb list scrolls VERTICALLY.
-    // In vertical (default) layout, it scrolls HORIZONTALLY.
     const opts = horizontal
       ? { behavior: 'smooth', block: 'center', inline: 'nearest' }
       : { behavior: 'smooth', block: 'nearest', inline: 'center' };
@@ -605,27 +685,33 @@ class GalleryCard extends HTMLElement {
     this.showItem((this.currentIndex ?? 0) + step);
   }
 
-  openModal() {
+  async openModal() {
     if (this.currentIndex == null || this.currentIndex < 0) return;
     const item = this.items[this.currentIndex];
     if (!item) return;
 
     this._lastFocus = document.activeElement;
 
-    this.modalMedia.innerHTML = '';
-    if (item.isVideo) {
-      const v = document.createElement('video');
-      v.src = item.url;
-      v.controls = true;
-      v.autoplay = true;
-      v.playsInline = true;
-      this.modalMedia.appendChild(v);
-    } else {
-      const img = document.createElement('img');
-      img.src = item.url;
-      img.decoding = 'async';
-      this.modalMedia.appendChild(img);
-    }
+    this._cleanupMedia(this.modalMedia);
+
+    try {
+      const { url } = await this._resolveWithPool(item.id);
+
+      if (item.isVideo) {
+        const v = document.createElement('video');
+        v.src = url;
+        v.controls = true;
+        v.autoplay = true;
+        v.playsInline = true;
+        this.modalMedia.appendChild(v);
+      } else {
+        const img = document.createElement('img');
+        img.src = url;
+        img.decoding = 'async';
+        this.modalMedia.appendChild(img);
+      }
+    } catch {}
+
     this.modalCaption.textContent = item.title || '';
     this.modal.classList.add('open');
     this.modal.setAttribute('aria-hidden', 'false');
@@ -635,7 +721,7 @@ class GalleryCard extends HTMLElement {
   closeModal() {
     this.modal.classList.remove('open');
     this.modal.setAttribute('aria-hidden', 'true');
-    this.modalMedia.innerHTML = '';
+    this._cleanupMedia(this.modalMedia);
     // Restore focus to the card for continued keyboard nav
     if (this._lastFocus && typeof this._lastFocus.focus === 'function') {
       this._lastFocus.focus();
@@ -669,7 +755,7 @@ class GalleryCardEditor extends HTMLElement {
     return {
       media_dir: '',
       folder_pattern: 'MM-DD-YY',
-      file_pattern: '^(.+)$',
+      file_pattern: '^(.*)$',
       file_time_regex: '(\\d{2}:\\d{2}:\\d{2})',
       thumb_height: 72,
       thumb_gap: 1,
@@ -681,6 +767,9 @@ class GalleryCardEditor extends HTMLElement {
       horizontal_layout: false,
       sidebar_width: 146,
       layout_gap: 8,
+      // NEW
+      max_items: 1000,
+      page_size: 200,
     };
   }
 
@@ -691,7 +780,6 @@ class GalleryCardEditor extends HTMLElement {
       {
         name: 'folder_pattern',
         selector: { text: {} },
-        // helper text shows under the field
         help: 'Tokens: YYYY, YY, MM, DD (e.g., YYYY/MM/DD, MM-DD-YY)',
       },
       { name: 'file_pattern', selector: { text: {} }, help: 'Caption regex on FULL filename incl. extension; uses capture group 1.' },
@@ -710,6 +798,10 @@ class GalleryCardEditor extends HTMLElement {
       { name: 'horizontal_layout', selector: { boolean: {} }, help: 'Thumbs on the left, preview on the right.' },
       { name: 'sidebar_width', selector: { number: { min: 80, max: 400, mode: 'box' } } },
       { name: 'layout_gap', selector: { number: { min: 0, max: 32, mode: 'box' } } },
+
+      // NEW: safety caps
+      { name: 'max_items', selector: { number: { min: 0, max: 100000, mode: 'box' } }, help: 'Hard cap on items to load (0 = unlimited).'},
+      { name: 'page_size', selector: { number: { min: 20, max: 1000, mode: 'box' } }, help: 'Thumbs rendered per chunk for smoother performance.'},
     ];
   }
 
@@ -753,6 +845,8 @@ class GalleryCardEditor extends HTMLElement {
         horizontal_layout: 'Horizontal layout (thumbs left)',
         sidebar_width: 'Sidebar width (px)',
         layout_gap: 'Layout gap (px)',
+        max_items: 'Max items',
+        page_size: 'Thumbs per chunk',
       };
       return map[schema.name] || schema.name;
     };
