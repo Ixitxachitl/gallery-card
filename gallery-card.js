@@ -528,95 +528,96 @@ class GalleryCard extends HTMLElement {
     }, { root, rootMargin: '200px', threshold: 0.01 });
   }
 
-  async _hydrateThumb(fig) {
-    const idx = Number(fig.dataset.index);
-    const item = this.items?.[idx];
-    if (!item) return;
+async _hydrateThumb(fig) {
+const idx = Number(fig.dataset.index);
+const item = this.items?.[idx];
+if (!item) return;
 
-    const img = fig.querySelector('img');
-    if (!img) return;
 
-    try {
-      const { url } = await this._resolveWithPool(item.id);
+const img = fig.querySelector('img');
+if (!img) return;
 
-      if (!item.isVideo) {
-        img.src = url;
-        return;
-      }
 
-      // ---- VIDEO THUMB STRATEGY ----
-      // 1) Try to render first frame to a canvas and use it as the <img> src
-      // 2) If that fails (e.g., CORS/canvas taint), gracefully fallback to a lightweight <video>
-      const v = document.createElement('video');
-      v.preload = 'metadata';
-      v.muted = true;
-      v.playsInline = true;
-      v.crossOrigin = 'anonymous'; // allow canvas if same-origin/proxy permits
-      v.src = url;
+try {
+const { url } = await this._resolveWithPool(item.id);
 
-      const onLoaded = async () => {
-        try {
-          // Seek a tiny bit into the video to ensure a frame is available
-          const target = Math.min(0.1, (v.duration && isFinite(v.duration)) ? Math.max(0, v.duration * 0.01) : 0.1);
-          if (!isNaN(target)) {
-            try { v.currentTime = target; } catch {}
-          }
 
-          // Wait for a frame
-          await new Promise((res) => {
-            const ok = () => { v.removeEventListener('seeked', ok); v.removeEventListener('timeupdate', ok); res(); };
-            v.addEventListener('seeked', ok);
-            v.addEventListener('timeupdate', ok);
-          });
+if (!item.isVideo) {
+img.src = url;
+return;
+}
 
-          const w = 160;
-          const naturalW = v.videoWidth || 160;
-          const naturalH = v.videoHeight || Number(getComputedStyle(img).getPropertyValue('--gc-thumb-h')) || 72;
-          const h = Math.round((naturalH && naturalW) ? (w * naturalH / naturalW) : (this.config.thumb_height || 72));
 
-          const c = document.createElement('canvas');
-          c.width = w; c.height = h;
-          const ctx = c.getContext('2d');
-          ctx.drawImage(v, 0, 0, w, h);
-          try {
-            img.src = c.toDataURL('image/jpeg', 0.7);
-          } catch {
-            // If toDataURL is blocked, just fall back below
-            throw new Error('toDataURL failed');
-          }
+// ---- VIDEO THUMB STRATEGY ----
+const v = document.createElement('video');
+v.preload = 'metadata';
+v.muted = true;
+v.playsInline = true;
+v.crossOrigin = 'anonymous';
+v.src = url;
 
-          // Cleanup video element to free decoders
-          try { v.removeAttribute('src'); v.load(); } catch {}
-          v.remove();
-        } catch {
-          // Fallback: keep a lightweight <video> as the thumb (metadata only)
-          const vid = document.createElement('video');
-          vid.preload = 'metadata';
-          vid.muted = true;
-          vid.playsInline = true;
-          vid.src = url;
-          try { fig.replaceChild(vid, img); } catch {}
-        }
-      };
 
-      v.addEventListener('loadeddata', onLoaded, { once: true });
-      v.addEventListener('error', () => {
-        // If even loading metadata fails, last-resort: assign the video URL and hope UA draws poster
-        try { img.src = url; } catch {}
-        try { v.removeAttribute('src'); v.load(); } catch {}
-        v.remove();
-      }, { once: true });
+const onLoaded = async () => {
+try {
+const target = 0.1;
+try { v.currentTime = target; } catch {}
 
-      // Attach off-DOM to avoid layout; still decodes one at a time via IO
-      v.style.position = 'absolute';
-      v.style.left = '-99999px';
-      v.style.top = 'auto';
-      this.shadowRoot.appendChild(v);
-    } catch {
-      // As a final fallback do nothing; thumb remains blank but card still works.
-    }
-  }
 
+await new Promise((res) => {
+const ok = () => { v.removeEventListener('seeked', ok); res(); };
+v.addEventListener('seeked', ok);
+});
+
+
+const w = 160;
+const naturalW = v.videoWidth || 160;
+const naturalH = v.videoHeight || (this.config.thumb_height || 72);
+const h = Math.round(w * naturalH / naturalW);
+
+
+const c = document.createElement('canvas');
+c.width = w; c.height = h;
+const ctx = c.getContext('2d');
+ctx.drawImage(v, 0, 0, w, h);
+
+
+try {
+img.src = c.toDataURL('image/jpeg', 0.7);
+} catch (e) {
+throw e;
+}
+
+
+try { v.removeAttribute('src'); v.load(); } catch {}
+v.remove();
+} catch (e) {
+// Fallback to lightweight <video>
+const vid = document.createElement('video');
+vid.preload = 'metadata';
+vid.muted = true;
+vid.playsInline = true;
+vid.src = url;
+try { fig.replaceChild(vid, img); } catch {}
+}
+};
+
+
+v.addEventListener('loadeddata', onLoaded, { once: true });
+v.addEventListener('error', () => {
+try { img.src = url; } catch {}
+try { v.removeAttribute('src'); v.load(); } catch {}
+v.remove();
+}, { once: true });
+
+
+v.style.position = 'absolute';
+v.style.left = '-99999px';
+v.style.top = 'auto';
+this.shadowRoot.appendChild(v);
+} catch (e) {
+// Final fallback: leave blank
+}
+}
 if (!customElements.get('gallery-card')) {
   customElements.define('gallery-card', GalleryCard);
 }
