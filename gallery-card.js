@@ -1,4 +1,4 @@
-console.log(`%cgallery-card\n%cVersion: ${'1.3.0'}`, 'color: rebeccapurple; font-weight: bold;', '');
+console.log(`%cgallery-card\n%cVersion: ${'1.3.1'}`, 'color: rebeccapurple; font-weight: bold;', '');
 
 window.customCards = window.customCards || [];
 window.customCards.push({
@@ -91,14 +91,14 @@ class GalleryCard extends HTMLElement {
       /* Thumbs (tight, theme-friendly) */
       .thumb-row { display:flex; overflow-x:auto; gap:var(--gc-thumb-gap, 1px); padding:2px 0; }
       .thumb { position:relative; margin:0; padding:0; line-height:0; }
-      .thumb img {
+      .thumb img, .thumb video {
         height: var(--gc-thumb-h, 72px);
         width: auto; display:block;
         cursor:pointer; border:1px solid transparent; border-radius:3px;
         object-fit: contain;
         background: var(--card-background-color);
       }
-      .thumb.selected img { border-color: var(--primary-color); }
+      .thumb.selected img, .thumb.selected video { border-color: var(--primary-color); }
     
       /* Type badge (thumb) */
       .badge {
@@ -532,206 +532,90 @@ class GalleryCard extends HTMLElement {
     const idx = Number(fig.dataset.index);
     const item = this.items?.[idx];
     if (!item) return;
-    try {
-      const { url } = await this._resolveWithPool(item.id);
-      const img = fig.querySelector('img');
-      if (img) {
-        // For video thumbs we still use an <img> and let the server pick a frame
-        img.src = item.isVideo ? (url + '#t=0.1') : url;
-      }
-    } catch {}
-  }
 
-  _renderThumbs(items) {
-    this._setupThumbObserver();
-    this._cleanupMedia(this.thumbRow);
-    this.thumbRow.innerHTML = '';
-    this._renderThumbsChunked(0);
-  }
-
-  _renderThumbsChunked(start = 0) {
-    const page = Number(this.config.page_size) || 200;
-    const end = Math.min(start + page, this.items.length);
-    const frag = document.createDocumentFragment();
-
-    for (let i = start; i < end; i++) {
-      const item = this.items[i];
-      const fig = document.createElement('div');
-      fig.className = 'thumb';
-      fig.dataset.index = String(i);
-      fig.title = item._original || item.title;
-
-      // a11y
-      fig.tabIndex = 0;
-      fig.setAttribute('role', 'button');
-      fig.setAttribute('aria-label', `${item.isVideo ? 'Video' : 'Image'}: ${item.title}`);
-
-      // Always lightweight <img> (no src yet — set when intersecting)
-      const img = document.createElement('img');
-      img.loading = 'lazy';
-      img.decoding = 'async';
-      fig.appendChild(img);
-
-      const badge = document.createElement('span');
-      badge.className = 'badge';
-      badge.textContent = item.isVideo ? '▶' : '🖼';
-      fig.appendChild(badge);
-
-      const cap = document.createElement('span');
-      cap.className = 'thumb-cap';
-      cap.textContent = item.title;
-      fig.appendChild(cap);
-
-      frag.appendChild(fig);
-    }
-
-    this.thumbRow.appendChild(frag);
-
-    for (let i = start; i < end; i++) {
-      const fig = this.thumbRow.querySelector(`.thumb[data-index="${i}"]`);
-      if (fig) this._thumbObserver.observe(fig);
-    }
-
-    if (end < this.items.length) {
-      // Yield to main thread; schedule next chunk lazily
-      (window.requestIdleCallback ? requestIdleCallback : setTimeout)(() => this._renderThumbsChunked(end), 0);
-    }
-  }
-
-  async _renderPreview(item) {
-    this._cleanupMedia(this.previewSlot);
-  
-    if (!item) {
-      this.setAttribute('data-empty', '');
-      const empty = document.createElement('div');
-      empty.className = 'preview-empty';
-      empty.textContent = 'Nothing to show for this date';
-      this.previewSlot.appendChild(empty);
-      return;
-    }
-  
-    this.removeAttribute('data-empty');
+    const img = fig.querySelector('img');
+    if (!img) return;
 
     try {
       const { url } = await this._resolveWithPool(item.id);
 
-      let mediaEl, badgeText;
-      if (item.isVideo) {
-        mediaEl = document.createElement('video');
-        mediaEl.src = url;                 // only one video alive here
-        mediaEl.className = 'preview-media video';
-        mediaEl.muted = true; mediaEl.playsInline = true; mediaEl.preload = 'metadata';
-        mediaEl.addEventListener('click', () => this.openModal());
-        badgeText = '▶';
-      } else {
-        mediaEl = document.createElement('img');
-        mediaEl.src = url;
-        mediaEl.className = 'preview-media image';
-        mediaEl.loading = 'lazy';
-        mediaEl.decoding = 'async';
-        mediaEl.addEventListener('click', () => this.openModal());
-        badgeText = '🖼';
-      }
-      this.previewSlot.appendChild(mediaEl);
-  
-      const badge = document.createElement('span');
-      badge.className = 'preview-badge';
-      badge.textContent = badgeText;
-      this.previewSlot.appendChild(badge);
-  
-      const pcap = document.createElement('span');
-      pcap.className = 'preview-cap';
-      pcap.textContent = item.title || '';
-      this.previewSlot.appendChild(pcap);
-    } catch (e) {
-      const err = document.createElement('div');
-      err.className = 'preview-empty';
-      err.textContent = 'Failed to load media';
-      this.previewSlot.appendChild(err);
-    }
-  }
-
-  _highlightThumb(index) {
-    this.thumbRow.querySelectorAll('.thumb').forEach((el, i) => {
-      el.classList.toggle('selected', i === index);
-    });
-  }
-
-  _scrollThumbIntoView(index) {
-    const el = this.thumbRow?.querySelector(`.thumb[data-index="${index}"]`);
-    if (!el) return;
-  
-    const horizontal = this.hasAttribute('data-horizontal');
-  
-    const opts = horizontal
-      ? { behavior: 'smooth', block: 'center', inline: 'nearest' }
-      : { behavior: 'smooth', block: 'nearest', inline: 'center' };
-  
-    requestAnimationFrame(() => el.scrollIntoView(opts));
-  }
-
-  showItem(index) {
-    if (!this.items || !this.items.length) return;
-    const len = this.items.length;
-    const clamped = ((index % len) + len) % len;
-    this.currentIndex = clamped;
-    this._renderPreview(this.items[this.currentIndex]);
-    this._highlightThumb(this.currentIndex);
-    this._scrollThumbIntoView(this.currentIndex);
-  }
-
-  changeItem(step) {
-    if (!this.items || !this.items.length) return;
-    this.showItem((this.currentIndex ?? 0) + step);
-  }
-
-  async openModal() {
-    if (this.currentIndex == null || this.currentIndex < 0) return;
-    const item = this.items[this.currentIndex];
-    if (!item) return;
-
-    this._lastFocus = document.activeElement;
-
-    this._cleanupMedia(this.modalMedia);
-
-    try {
-      const { url } = await this._resolveWithPool(item.id);
-
-      if (item.isVideo) {
-        const v = document.createElement('video');
-        v.src = url;
-        v.controls = true;
-        v.autoplay = true;
-        v.playsInline = true;
-        this.modalMedia.appendChild(v);
-      } else {
-        const img = document.createElement('img');
+      if (!item.isVideo) {
         img.src = url;
-        img.decoding = 'async';
-        this.modalMedia.appendChild(img);
+        return;
       }
-    } catch {}
 
-    this.modalCaption.textContent = item.title || '';
-    this.modal.classList.add('open');
-    this.modal.setAttribute('aria-hidden', 'false');
-    this.focus();
-  }
+      // ---- VIDEO THUMB STRATEGY ----
+      // 1) Try to render first frame to a canvas and use it as the <img> src
+      // 2) If that fails (e.g., CORS/canvas taint), gracefully fallback to a lightweight <video>
+      const v = document.createElement('video');
+      v.preload = 'metadata';
+      v.muted = true;
+      v.playsInline = true;
+      v.crossOrigin = 'anonymous'; // allow canvas if same-origin/proxy permits
+      v.src = url;
 
-  closeModal() {
-    this.modal.classList.remove('open');
-    this.modal.setAttribute('aria-hidden', 'true');
-    this._cleanupMedia(this.modalMedia);
-    // Restore focus to the card for continued keyboard nav
-    if (this._lastFocus && typeof this._lastFocus.focus === 'function') {
-      this._lastFocus.focus();
-    } else {
-      this.focus();
+      const onLoaded = async () => {
+        try {
+          // Seek a tiny bit into the video to ensure a frame is available
+          const target = Math.min(0.1, (v.duration && isFinite(v.duration)) ? Math.max(0, v.duration * 0.01) : 0.1);
+          if (!isNaN(target)) {
+            try { v.currentTime = target; } catch {}
+          }
+
+          // Wait for a frame
+          await new Promise((res) => {
+            const ok = () => { v.removeEventListener('seeked', ok); v.removeEventListener('timeupdate', ok); res(); };
+            v.addEventListener('seeked', ok);
+            v.addEventListener('timeupdate', ok);
+          });
+
+          const w = 160;
+          const naturalW = v.videoWidth || 160;
+          const naturalH = v.videoHeight || Number(getComputedStyle(img).getPropertyValue('--gc-thumb-h')) || 72;
+          const h = Math.round((naturalH && naturalW) ? (w * naturalH / naturalW) : (this.config.thumb_height || 72));
+
+          const c = document.createElement('canvas');
+          c.width = w; c.height = h;
+          const ctx = c.getContext('2d');
+          ctx.drawImage(v, 0, 0, w, h);
+          try {
+            img.src = c.toDataURL('image/jpeg', 0.7);
+          } catch {
+            // If toDataURL is blocked, just fall back below
+            throw new Error('toDataURL failed');
+          }
+
+          // Cleanup video element to free decoders
+          try { v.removeAttribute('src'); v.load(); } catch {}
+          v.remove();
+        } catch {
+          // Fallback: keep a lightweight <video> as the thumb (metadata only)
+          const vid = document.createElement('video');
+          vid.preload = 'metadata';
+          vid.muted = true;
+          vid.playsInline = true;
+          vid.src = url;
+          try { fig.replaceChild(vid, img); } catch {}
+        }
+      };
+
+      v.addEventListener('loadeddata', onLoaded, { once: true });
+      v.addEventListener('error', () => {
+        // If even loading metadata fails, last-resort: assign the video URL and hope UA draws poster
+        try { img.src = url; } catch {}
+        try { v.removeAttribute('src'); v.load(); } catch {}
+        v.remove();
+      }, { once: true });
+
+      // Attach off-DOM to avoid layout; still decodes one at a time via IO
+      v.style.position = 'absolute';
+      v.style.left = '-99999px';
+      v.style.top = 'auto';
+      this.shadowRoot.appendChild(v);
+    } catch {
+      // As a final fallback do nothing; thumb remains blank but card still works.
     }
   }
-
-  getCardSize() { return 4; }
-}
 
 if (!customElements.get('gallery-card')) {
   customElements.define('gallery-card', GalleryCard);
