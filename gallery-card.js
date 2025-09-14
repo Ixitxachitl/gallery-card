@@ -1,4 +1,4 @@
-console.log(`%cgallery-card\n%cVersion: ${'1.3.3'}`, 'color: rebeccapurple; font-weight: bold;', '');
+console.log(`%cgallery-card\n%cVersion: ${'1.3.4'}`, 'color: rebeccapurple; font-weight: bold;', '');
 
 window.customCards = window.customCards || [];
 window.customCards.push({
@@ -71,217 +71,236 @@ class GalleryCard extends HTMLElement {
     }
   }
 
-  _render() {
-    this.shadowRoot.innerHTML = `
-    <style>
-      :host { display:block; }
-      .card {
-        background: var(--ha-card-background, var(--card-background-color, white));
-        border-radius: var(--ha-card-border-radius, 12px);
-        box-shadow: var(--ha-card-box-shadow, none);
-        padding: var(--ha-card-padding, 16px);
-        color: var(--primary-text-color);
-      }
+_render() {
+  this.shadowRoot.innerHTML = `
+  <style>
+    :host { display:block; }
+    .card {
+      background: var(--ha-card-background, var(--card-background-color, white));
+      border-radius: var(--ha-card-border-radius, 12px);
+      box-shadow: var(--ha-card-box-shadow, none);
+      padding: var(--ha-card-padding, 16px);
+      color: var(--primary-text-color);
+    }
+  
+    .toolbar { display:flex; align-items:center; justify-content:space-between; margin-bottom:4px; }
+    .date-picker { margin:0; }
+    .refresh-btn { border:none; background:transparent; cursor:pointer; font-size:18px; line-height:1; padding:0 4px; opacity:.8; }
+    .refresh-btn:hover { opacity:1; }
+  
+    /* Thumbs (tight, theme-friendly) */
+    .thumb-row { display:flex; overflow-x:auto; gap:var(--gc-thumb-gap, 1px); padding:2px 0; }
+    .thumb { position:relative; margin:0; padding:0; line-height:0; }
+    .thumb img, .thumb video {
+      height: var(--gc-thumb-h, 72px);
+      width: auto; display:block;
+      cursor:pointer; border:1px solid transparent; border-radius:3px;
+      object-fit: contain;
+      background: var(--card-background-color);
+    }
+    .thumb.selected img, .thumb.selected video { border-color: var(--primary-color); }
+  
+    /* Type badge (thumb) */
+    .badge {
+      position:absolute; top:2px; right:2px;
+      background:rgba(0,0,0,.65); color:#fff; font-size:10px; padding:2px 5px; border-radius:10px; line-height:1;
+      pointer-events:none;
+    }
+  
+    /* Caption overlay (thumb) */
+    .thumb-cap {
+      position:absolute; left:2px; bottom:2px; right:auto;
+      max-width:80px;
+      background:rgba(0,0,0,.55); color:#fff;
+      font-size:9px; line-height:1.1;
+      padding:1px 3px; border-radius:3px;
+      overflow:hidden; text-overflow:ellipsis; white-space:nowrap;
+      pointer-events:none;
+    }
+  
+    /* Preview */
+    .preview-container {
+      position: relative;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      max-height: var(--gc-preview-max-h, 480px);
+      overflow: hidden;
+      /* also acts as flex item when horizontal */
+      flex: 1 1 auto;
+      min-width: 0;
+    }
+  
+    .preview-slot {
+      position:relative;
+      width:100%;
+      height:auto;
+      display:flex;
+      align-items:center;
+      justify-content:center;
+    }
+  
+    .preview-media {
+      max-width: 100%;
+      max-height: var(--gc-preview-max-h, 480px);
+      width: auto; height: auto;
+      object-fit: contain; display:block;
+      border-radius: var(--ha-card-border-radius, 12px);
+      background: var(--card-background-color);
+    }
+    .preview-media.image, .preview-media.video { cursor:zoom-in; }
+  
+    /* Empty placeholder */
+    .preview-empty {
+      width: 100%;
+      height: auto;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      color: var(--secondary-text-color);
+      opacity: 0.7;
+      user-select: none;
+      max-height: 100%;
+    }
+  
+    /* Badge + caption (preview) */
+    .preview-badge {
+      position:absolute; right:8px; bottom:8px;
+      background:rgba(0,0,0,.65); color:#fff; font-size:12px; padding:3px 7px; border-radius:12px; line-height:1;
+      z-index:2; pointer-events:none;
+    }
+    .preview-cap {
+      position:absolute; left:8px; bottom:8px; right:60px;
+      background:rgba(0,0,0,.55); color:#fff;
+      font-size:12px; line-height:1.2;
+      padding:3px 6px; border-radius:6px;
+      overflow:hidden; text-overflow:ellipsis; white-space:nowrap;
+      z-index:2; pointer-events:none;
+    }
+  
+    /* Prev/Next */
+    .nav-btn {
+      position:absolute; top:8px; padding:6px 10px; background:rgba(0,0,0,.55);
+      color:#fff; border:none; border-radius:6px; cursor:pointer; font-size:14px; line-height:1; user-select:none; z-index:3;
+    }
+    .nav-prev { left:8px; }
+    .nav-next { right:8px; }
+  
+    /* Modal */
+    .modal { display:none; position:fixed; z-index:9999; inset:0; background:rgba(0,0,0,.9); }
+    .modal.open { display:block; }
+    .modal-content { position:absolute; top:50%; left:50%; transform:translate(-50%,-50%); max-width:95vw; max-height:90vh; }
+    .modal-media { position: relative; z-index: 1; }
+    .modal-content img, .modal-content video { width:100%; height:auto; max-height:85vh; object-fit:contain; }
+    .modal-caption { color:#ccc; text-align:center; margin-top:8px; font-size:14px; }
+    .modal-close { position:absolute; z-index: 2; top:10px; right:14px; font-size:28px; color:#fff; cursor:pointer; user-select:none; pointer-events:auto; }
+  
+    /* Toggles */
+    :host([data-caps-off]) .thumb-cap,
+    :host([data-caps-off]) .preview-cap { display:none; }
+    :host([data-badges-off]) .badge,
+    :host([data-badges-off]) .preview-badge { display:none; }
+  
+    /* Content wrapper controls vertical vs horizontal layout */
+    .content { display: block; }
+  
+    /* Horizontal: thumbs as a vertical sidebar, preview on the right */
+    :host([data-horizontal]) .content {
+      display: flex;
+      gap: var(--gc-layout-gap, 8px);
+      align-items: stretch;
+    }
+  
+    /* Horizontal mode: thumbs column */
+    :host([data-horizontal]) .thumb-row {
+      flex-direction: column;
+      width: var(--gc-sidebar-w, 120px);
+      flex: 0 0 var(--gc-sidebar-w, 120px);
+      overflow-y: auto;
+      overflow-x: hidden;
+      max-height: var(--gc-preview-max-h, 480px);
+      padding: 0;
+    }
+  
+    /* Horizontal: preview flexes and has a concrete height to scale against */
+    :host([data-horizontal]) .preview-container {
+      flex: 1 1 auto;
+      min-width: 0;
+      height: var(--gc-preview-max-h, 480px);
+      max-height: var(--gc-preview-max-h, 480px);
+      display: flex;
+      align-items: center;
+      justify-content: center;
+    }
+    :host([data-horizontal]) .preview-slot {
+      width: 100%;
+      height: 100%;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+    }
+    :host([data-horizontal]) .preview-media {
+      max-width: 100%;
+      max-height: var(--gc-preview-max-h, 480px);
+    }
+  
+    /* Thumbs strip baseline height */
+    .thumb-row {
+      min-height: var(--gc-thumb-h, 72px);
+      overflow-x: scroll;
+    }
+    :host([data-horizontal]) .thumb-row {
+      max-height: var(--gc-preview-max-h, 480px);
+      min-height: var(--gc-preview-max-h, 480px);
+      overflow-y: scroll;
+    }
+  
+    .content { scrollbar-gutter: stable both-edges; }
+  
+    .thumb-row:empty::before {
+      content: 'No media for this date';
+      display: inline-flex;
+      align-items: center;
+      height: var(--gc-thumb-h, 72px);
+      padding: 0 8px;
+      color: var(--secondary-text-color);
+      opacity: 0.7;
+    }
     
-      .toolbar { display:flex; align-items:center; justify-content:space-between; margin-bottom:4px; }
-      .date-picker { margin:0; }
-      .refresh-btn { border:none; background:transparent; cursor:pointer; font-size:18px; line-height:1; padding:0 4px; opacity:.8; }
-      .refresh-btn:hover { opacity:1; }
-    
-      /* Thumbs (tight, theme-friendly) */
-      .thumb-row { display:flex; overflow-x:auto; gap:var(--gc-thumb-gap, 1px); padding:2px 0; }
-      .thumb { position:relative; margin:0; padding:0; line-height:0; }
-      .thumb img, .thumb video {
-        height: var(--gc-thumb-h, 72px);
-        width: auto; display:block;
-        cursor:pointer; border:1px solid transparent; border-radius:3px;
-        object-fit: contain;
-        background: var(--card-background-color);
-      }
-      .thumb.selected img, .thumb.selected video { border-color: var(--primary-color); }
-    
-      /* Type badge (thumb) */
-      .badge {
-        position:absolute; top:2px; right:2px;
-        background:rgba(0,0,0,.65); color:#fff; font-size:10px; padding:2px 5px; border-radius:10px; line-height:1;
-        pointer-events:none;
-      }
-    
-      /* Caption overlay (thumb) */
-      .thumb-cap {
-        position:absolute; left:2px; bottom:2px; right:auto;
-        max-width:80px;
-        background:rgba(0,0,0,.55); color:#fff;
-        font-size:9px; line-height:1.1;
-        padding:1px 3px; border-radius:3px;
-        overflow:hidden; text-overflow:ellipsis; white-space:nowrap;
-        pointer-events:none;
-      }
-    
-      /* Preview */
-      .preview-container {
-        position: relative;
-        display: flex;
-        align-items: center;
-        justify-content: center;
-        max-height: var(--gc-preview-max-h, 480px);
-        overflow: hidden;
-      }
-    
-      .preview-slot {
-        position:relative;
-        width:100%;
-        height:auto;
-        display:flex;
-        align-items:center;
-        justify-content:center;
-      }
-    
-      .preview-media {
-        max-width: 100%;
-        max-height: 100%;
-        width: auto; height: auto;
-        object-fit: contain; display:block;
-        border-radius: var(--ha-card-border-radius, 12px);
-        background: var(--card-background-color);
-      }
-      .preview-media.image, .preview-media.video { cursor:zoom-in; }
-    
-      /* Empty placeholder */
-      .preview-empty {
-        width: 100%;
-        height: auto;
-        display: flex;
-        align-items: center;
-        justify-content: center;
-        color: var(--secondary-text-color);
-        opacity: 0.7;
-        user-select: none;
-        max-height: 100%;
-      }
-    
-      /* Badge + caption (preview) */
-      .preview-badge {
-        position:absolute; right:8px; bottom:8px;
-        background:rgba(0,0,0,.65); color:#fff; font-size:12px; padding:3px 7px; border-radius:12px; line-height:1;
-        z-index:2; pointer-events:none;
-      }
-      .preview-cap {
-        position:absolute; left:8px; bottom:8px; right:60px;
-        background:rgba(0,0,0,.55); color:#fff;
-        font-size:12px; line-height:1.2;
-        padding:3px 6px; border-radius:6px;
-        overflow:hidden; text-overflow:ellipsis; white-space:nowrap;
-        z-index:2; pointer-events:none;
-      }
-    
-      /* Prev/Next */
-      .nav-btn {
-        position:absolute; top:8px; padding:6px 10px; background:rgba(0,0,0,.55);
-        color:#fff; border:none; border-radius:6px; cursor:pointer; font-size:14px; line-height:1; user-select:none; z-index:3;
-      }
-      .nav-prev { left:8px; }
-      .nav-next { right:8px; }
-    
-      /* Modal */
-      .modal { display:none; position:fixed; z-index:9999; inset:0; background:rgba(0,0,0,.9); }
-      .modal.open { display:block; }
-      .modal-content { position:absolute; top:50%; left:50%; transform:translate(-50%,-50%); max-width:95vw; max-height:90vh; }
-      .modal-media { position: relative; z-index: 1; }
-      .modal-content img, .modal-content video { width:100%; height:auto; max-height:85vh; object-fit:contain; }
-      .modal-caption { color:#ccc; text-align:center; margin-top:8px; font-size:14px; }
-      .modal-close { position:absolute; z-index: 2; top:10px; right:14px; font-size:28px; color:#fff; cursor:pointer; user-select:none; pointer-events:auto; }
-    
-      /* Toggles */
-      :host([data-caps-off]) .thumb-cap,
-      :host([data-caps-off]) .preview-cap { display:none; }
-      :host([data-badges-off]) .badge,
-      :host([data-badges-off]) .preview-badge { display:none; }
-    
-      /* Content wrapper controls vertical vs horizontal layout */
-      .content { display: block; }
-    
-      /* Horizontal: thumbs as a vertical sidebar, preview on the right */
-      :host([data-horizontal]) .content {
-        display: flex;
-        gap: var(--gc-layout-gap, 8px);
-        align-items: stretch;
-      }
-    
-      /* Horizontal mode: thumbs column */
-      :host([data-horizontal]) .thumb-row {
-        flex-direction: column;
-        width: var(--gc-sidebar-w, 120px);
-        flex: 0 0 var(--gc-sidebar-w, 120px);
-        overflow-y: auto;
-        overflow-x: hidden;
-        max-height: var(--gc-preview-max-h, 480px);
-        padding: 0;
-      }
-    
-      /* Horizontal: preview flexes */
-      :host([data-horizontal]) .preview-container {
-        flex: 1 1 auto;
-        min-width: 0;
-      }
-    
-      /* Thumbs strip baseline height */
-      .thumb-row {
-        min-height: var(--gc-thumb-h, 72px);
-        overflow-x: scroll;
-      }
-      :host([data-horizontal]) .thumb-row {
-        max-height: var(--gc-preview-max-h, 480px);
-        min-height: var(--gc-preview-max-h, 480px);
-        overflow-y: scroll;
-      }
-    
-      .content { scrollbar-gutter: stable both-edges; }
-    
-      .thumb-row:empty::before {
-        content: 'No media for this date';
-        display: inline-flex;
-        align-items: center;
-        height: var(--gc-thumb-h, 72px);
-        padding: 0 8px;
-        color: var(--secondary-text-color);
-        opacity: 0.7;
-      }
+    :host([data-empty]) .nav-btn { 
+      display: none; 
+    }
+    :host([data-single]) .nav-btn { 
+      display: none; 
+    }
+  </style>
+
+    <ha-card class="card">
+      <div class="toolbar">
+        <input type="date" class="date-picker" />
+        <button class="refresh-btn" title="Refresh" aria-label="Refresh">↻</button>
+      </div>
+
+      <div class="content">
+        <div class="thumb-row"></div>
       
-      :host([data-empty]) .nav-btn { 
-        display: none; 
-      }
-      :host([data-single]) .nav-btn { 
-        display: none; 
-      }
-    </style>
-
-      <ha-card class="card">
-        <div class="toolbar">
-          <input type="date" class="date-picker" />
-          <button class="refresh-btn" title="Refresh" aria-label="Refresh">↻</button>
+        <div class="preview-container">
+          <button class="nav-btn nav-prev" title="Previous" aria-label="Previous">&laquo; Prev</button>
+          <div class="preview-slot"></div>
+          <button class="nav-btn nav-next" title="Next" aria-label="Next">Next &raquo;</button>
         </div>
+      </div>
 
-        <div class="content">
-          <div class="thumb-row"></div>
-        
-          <div class="preview-container">
-            <button class="nav-btn nav-prev" title="Previous" aria-label="Previous">&laquo; Prev</button>
-            <div class="preview-slot"></div>
-            <button class="nav-btn nav-next" title="Next" aria-label="Next">Next &raquo;</button>
-          </div>
+      <div class="modal" role="dialog" aria-modal="true" aria-hidden="true">
+        <div class="modal-content">
+          <span class="modal-close" aria-label="Close">&times;</span>
+          <div class="modal-media"></div>
+          <div class="modal-caption"></div>
         </div>
-
-        <div class="modal" role="dialog" aria-modal="true" aria-hidden="true">
-          <div class="modal-content">
-            <span class="modal-close" aria-label="Close">&times;</span>
-            <div class="modal-media"></div>
-            <div class="modal-caption"></div>
-          </div>
-        </div>
-      </ha-card>
-    `;
-  }
+      </div>
+    </ha-card>
+  `;
+}
 
   _cacheRefs() {
     this.datePicker = this.shadowRoot.querySelector('.date-picker');
