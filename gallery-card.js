@@ -1,4 +1,4 @@
-console.log(`%cgallery-card\n%cVersion: ${'1.3.4'}`, 'color: rebeccapurple; font-weight: bold;', '');
+console.log(`%cgallery-card\n%cVersion: ${'1.3.5'}`, 'color: rebeccapurple; font-weight: bold;', '');
 
 window.customCards = window.customCards || [];
 window.customCards.push({
@@ -481,17 +481,26 @@ _render() {
     // Parse only — do not resolve here
     const parsed = mediaItems.map((item) => {
       const isVideo = (item.media_content_type || '').startsWith('video/');
-      const fullName = (item.title && String(item.title)) ||
-                       (item.media_content_id.split('/').pop() || '');
+      // Prefer the actual filename from the media_content_id; fall back to title
+      const fileFromId = (item.media_content_id.split('/').pop() || '').trim();
+      const titleStr = (item.title && String(item.title).trim()) || '';
+      const fullName = fileFromId || titleStr;
+    
+      const fileCaptionRe = this._compileRe(this.config.file_pattern || '^(.*)$');
       const capMatch = fullName.match(fileCaptionRe);
-      const caption = (capMatch && capMatch[1]) ? capMatch[1] : fullName;
+      const caption = (capMatch && capMatch[1]) ? capMatch[1] : (titleStr || fileFromId || '');
+    
+      // More permissive default: HH:MM:SS or HH_MM_SS or HH-MM-SS
+      const timeRe = this._compileRe(this.config.file_time_regex || '(\\d{2}[:_\\-]\\d{2}[:_\\-]\\d{2})');
       const sortMatch = fullName.match(timeRe);
       const sortKey = (sortMatch && sortMatch[1]) ? sortMatch[1] : '';
+    
       return {
         id: item.media_content_id,
         title: caption,
         isVideo,
         _original: fullName,
+        _full: fullName,
         _sortKey: sortKey,
       };
     });
@@ -500,12 +509,17 @@ _render() {
     const showVideos = this.config.show_videos !== false;
     const filtered = parsed.filter(it => it.isVideo ? showVideos : showImages);
 
-    filtered.sort((a, b) => b._sortKey.localeCompare(a._sortKey));
-
-    const max = Number(this.config.max_items) || 0;
-    const bounded = max > 0 ? filtered.slice(0, max) : filtered;
-
-    this.items = bounded;
+    // Newest first: primary by extracted time key; fallback to filename/ID descending
+    filtered.sort((a, b) => {
+      const ak = a._sortKey || '';
+      const bk = b._sortKey || '';
+      const byTime = bk.localeCompare(ak);
+      if (byTime !== 0) return byTime;
+      return (b._full || '').localeCompare(a._full || '');
+    });
+    
+    // default to newest (index 0 after sort)
+    this.items = filtered; // or the 'bounded' slice if you keep max_items
     this.toggleAttribute('data-single', this.items.length === 1);
     this.currentIndex = this.items.length ? 0 : -1;
 
