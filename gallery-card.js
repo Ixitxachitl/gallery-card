@@ -1,4 +1,4 @@
-console.log(`%cgallery-card\n%cVersion: ${'1.3.5'}`, 'color: rebeccapurple; font-weight: bold;', '');
+console.log(`%cgallery-card\n%cVersion: ${'1.3.6'}`, 'color: rebeccapurple; font-weight: bold;', '');
 
 window.customCards = window.customCards || [];
 window.customCards.push({
@@ -624,6 +624,14 @@ _render() {
     this._renderThumbsChunked(0);
   }
 
+  _idle(cb) {
+    const ric = (typeof window !== 'undefined') && window.requestIdleCallback;
+    if (typeof ric === 'function') {
+      return ric(cb, { timeout: 50 });   // correct options object
+    }
+    return setTimeout(cb, 0);            // fallback
+  }
+  
   _renderThumbsChunked(start = 0) {
     const page = Number(this.config.page_size) || 200;
     const end = Math.min(start + page, this.items.length);
@@ -667,7 +675,7 @@ _render() {
     }
 
     if (end < this.items.length) {
-      (window.requestIdleCallback ? requestIdleCallback : setTimeout)(() => this._renderThumbsChunked(end), 0);
+      this._idle(() => this._renderThumbsChunked(end));
     }
   }
 
