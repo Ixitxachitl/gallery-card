@@ -1,4 +1,4 @@
-console.log(`%cgallery-card\n%cVersion: ${'1.3.7'}`, 'color: rebeccapurple; font-weight: bold;', '');
+console.log(`%cgallery-card\n%cVersion: ${'1.3.8'}`, 'color: rebeccapurple; font-weight: bold;', '');
 
 window.customCards = window.customCards || [];
 window.customCards.push({
@@ -99,6 +99,9 @@ _render() {
       background: var(--card-background-color);
     }
     .thumb.selected img, .thumb.selected video { border-color: var(--primary-color); }
+
+    /* Prevent body scroll jump while loading thumbs */
+    .thumb-row, .preview-container, .content { overflow-anchor: none; }
   
     /* Type badge (thumb) */
     .badge {
@@ -129,6 +132,8 @@ _render() {
       /* also acts as flex item when horizontal */
       flex: 1 1 auto;
       min-width: 0;
+      height: var(--gc-preview-max-h, 480px);
+      max-height: var(--gc-preview-max-h, 480px);
     }
   
     .preview-slot {
@@ -524,13 +529,27 @@ _render() {
     this.currentIndex = this.items.length ? 0 : -1;
 
     this._renderThumbs(this.items);
-    if (this.currentIndex >= 0) {
-      this.showItem(this.currentIndex);
-    } else {
-      this._renderPreview(null);
-    }
-    this._highlightThumb(this.currentIndex);
-    this._scrollThumbIntoView(this.currentIndex);
+    
+    // Defer initial selection/centering to avoid page scroll jumps
+    const doInitialFocus = () => {
+      const doc   = document.scrollingElement;
+      const prevX = window.scrollX;
+      const prevY = doc ? doc.scrollTop : window.scrollY;
+    
+      if (this.currentIndex >= 0) {
+        this.showItem(this.currentIndex);
+      } else {
+        this._renderPreview(null);
+      }
+      this._highlightThumb(this.currentIndex);
+      this._scrollThumbIntoView(this.currentIndex);
+    
+      // Restore page scroll in case the container scroll influenced anchoring
+      window.scrollTo(prevX, prevY);
+    };
+    
+    // Two RAFs: wait for styles/layout to flush before centering the thumb
+    requestAnimationFrame(() => requestAnimationFrame(doInitialFocus));
   }
 
   _cleanupMedia(container) {
