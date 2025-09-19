@@ -1,4 +1,4 @@
-console.log(`%cgallery-card\n%cVersion: ${'1.3.8'}`, 'color: rebeccapurple; font-weight: bold;', '');
+console.log(`%cgallery-card\n%cVersion: ${'1.3.9'}`, 'color: rebeccapurple; font-weight: bold;', '');
 
 window.customCards = window.customCards || [];
 window.customCards.push({
@@ -132,8 +132,6 @@ _render() {
       /* also acts as flex item when horizontal */
       flex: 1 1 auto;
       min-width: 0;
-      height: var(--gc-preview-max-h, 480px);
-      max-height: var(--gc-preview-max-h, 480px);
     }
   
     .preview-slot {
