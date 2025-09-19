@@ -1,4 +1,4 @@
-console.log(`%cgallery-card\n%cVersion: ${'1.3.6'}`, 'color: rebeccapurple; font-weight: bold;', '');
+console.log(`%cgallery-card\n%cVersion: ${'1.3.7'}`, 'color: rebeccapurple; font-weight: bold;', '');
 
 window.customCards = window.customCards || [];
 window.customCards.push({
@@ -740,15 +740,23 @@ _render() {
 
   _scrollThumbIntoView(index) {
     const el = this.thumbRow?.querySelector(`.thumb[data-index="${index}"]`);
-    if (!el) return;
+    if (!el || !this.thumbRow) return;
   
-    const horizontal = this.hasAttribute('data-horizontal');
-  
-    const opts = horizontal
-      ? { behavior: 'smooth', block: 'center', inline: 'nearest' }
-      : { behavior: 'smooth', block: 'nearest', inline: 'center' };
-  
-    requestAnimationFrame(() => el.scrollIntoView(opts));
+    const horizontalLayout = this.hasAttribute('data-horizontal');
+    // Compute target scroll position without affecting the document scroll
+    if (horizontalLayout) {
+      // vertical list, scrollTop to center
+      const rowRect = this.thumbRow.getBoundingClientRect();
+      const elRect  = el.getBoundingClientRect();
+      const delta   = (elRect.top + elRect.height / 2) - (rowRect.top + rowRect.height / 2);
+      this.thumbRow.scrollTo({ top: this.thumbRow.scrollTop + delta, behavior: 'smooth' });
+    } else {
+      // horizontal strip, scrollLeft to center
+      const rowRect = this.thumbRow.getBoundingClientRect();
+      const elRect  = el.getBoundingClientRect();
+      const delta   = (elRect.left + elRect.width / 2) - (rowRect.left + rowRect.width / 2);
+      this.thumbRow.scrollTo({ left: this.thumbRow.scrollLeft + delta, behavior: 'smooth' });
+    }
   }
 
   showItem(index) {
